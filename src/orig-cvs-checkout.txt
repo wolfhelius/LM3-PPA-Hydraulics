@@ -1,0 +1,4 @@
+#!/bin/bash
+
+export CVSROOT=:ext:slm:/home/pjp/cvs
+cvs co -r no_fms_b_pjp land_lad2 coupler atmos_solo_land shared atmos_shared atmos_param

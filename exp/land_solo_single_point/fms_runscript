@@ -1,0 +1,116 @@
+#!/bin/csh -f
+#Minimal runscript for solo land single point model
+set echo 
+#--------------------------------------------------------------------------------------------------------
+# define variables
+set template  = $cwd/../../bin/mkmf.template.intel  # path to compile template
+set mkmf      = $cwd/../../bin/mkmf                 # path to executable mkmf
+set sourcedir = $cwd/../../src                      # path to directory containing model source code
+#--------------------------------------------------------------------------------------------------------
+set execdir = $cwd/exec    # where code is compiled and executable is created
+if ( $?PBS_JOBID ) then
+  set workdir = /lustre/fs/scratch/$USER/work/$PBS_JOBID  # where model is run and model output is produced
+else
+  set workdir = /lustre/fs/scratch/$USER/work/000000
+endif
+
+source /opt/modules/3.2.6.5/init/csh
+module use -a /ncrc/home2/fms/local/modulefiles
+module unload PrgEnv-cray PrgEnv-pgi PrgEnv-pathscale PrgEnv-gnu PrgEnv-intel
+module unload fre netcdf
+module load fre/arkansas-10
+module rm PrgEnv-pgi
+module load PrgEnv-intel/3.1.29
+module load intel/11.1.073
+module list
+setenv MAIN_PROGRAM coupler_main.o
+
+set pathnames = $cwd/path_names  # path to file containing list of source paths
+set namelist  = $cwd/namelists   # path to namelist file
+#--------------------------------------------------------------------------------------------------------
+# setup directory structure
+if ( ! -d $execdir ) mkdir $execdir
+if ( -e $workdir ) then
+  echo "ERROR: Existing workdir may contaminate run.  Move or remove $workdir and try again."
+  exit 1
+endif
+mkdir $workdir $workdir/INPUT $workdir/RESTART $workdir/DIAGNOSTICS
+#--------------------------------------------------------------------------------------------------------
+# compile the model code and create executable
+cd $execdir
+$mkmf -p fms.x -t $template -a $sourcedir $pathnames $sourcedir/shared/include
+#$mkmf -t $template -p fms.x -c 
+if ( $status != 0 ) then
+  echo "ERROR: mkmf failed"
+  exit 1
+endif
+make -f Makefile
+if ( $status != 0 ) then
+  echo "ERROR: make failed"
+  exit 1
+endif
+#--------------------------------------------------------------------------------------------------------
+# get input data for Sheffield driver for years ys-ye, set up file.table
+set ys                 = 1982
+set ye                 = 1999
+#>aw where do I get the forcing data?? what Sheffield run is this? 1/8¡? includes what vars?
+set land_forcing_dir   = "/lustre/fs/scratch/Peter.Phillipps/non_fms_model/single_point_forcing"
+#set land_forcing_dir   = "/net/slm/devel/lad2/riga-single-point/forcing"
+set land_forcing_files = ""
+set year               = $ys
+while ( $year <= $ye )
+   set land_forcing_files = "$land_forcing_files ${land_forcing_dir}/MNS_${year}.nc"
+   @ year ++
+   end
+mkdir $workdir/FORCING
+#>aw  -u = update
+cp -u $land_forcing_files $workdir/FORCING/ || exit 1
+
+#form the file.table for the input atmospheric forcing
+ls -1 $workdir/FORCING/*.nc > $workdir/file.table
+
+# increase "ye" by 1 to prepare for using it in the prescr_forcing_nml end of loop
+@ ye ++
+#--------------------------------------------------------------------------------------------------------
+# set run length, calendar and time steps
+cd $workdir
+#>aw does the model know to do repeating time?
+#>aw this sets the duration of the run?
+#>aw is this the whole of the namelist for INDY?
+cat > input.nml <<EOF
+ &coupler_nml
+     months = 2,
+     days   = 0,
+     seconds = 0,
+     current_date = 1900,01,01,0,0,0,
+     calendar = 'JULIAN'
+     dt_atmos = 1800,
+     dt_cpld  = 7200 /
+
+ &prescr_forcing_nml
+     use_diurnal_solar = .true.,
+     filelist = 'file.table'
+     timeline = 'loop',
+     start_loop = $ys,1,1,0,0,0,
+     end_loop   = $ye,1,1,0,0,0,
+     limit_swdn_by_TOA_flux = .true. /
+EOF
+cat $namelist >> input.nml
+#--------------------------------------------------------------------------------------------------------
+# get input data and executable
+cp /lustre/fs/archive/fms/esm/LM3/netcdf/any_grid/geohydrology_table.20090108.nc     $workdir/INPUT/geohydrology_table.nc
+cp /lustre/fs/scratch/Peter.Phillipps/lu.1700-2005/lu.1700-2005.nc                   $workdir/INPUT/lu.1700-2005.nc
+
+#cp /archive/kap/lmdt/mod_input_files/netcdf/any_grid/geohydrology_table.20090108.nc $workdir/INPUT/geohydrology_table.nc
+#cp /archive/slm/DATA/landuse/hyde3/rc2/lu.1700-2005.nc                              $workdir/INPUT/lu.1700-2005.nc
+
+cp $execdir/fms.x fms.x
+#--------------------------------------------------------------------------------------------------------
+# get restart data (not needed if one desires a cold start)
+cd $workdir/INPUT
+cpio -i <  /ncrc/home1/Peter.Phillipps/non_fms_model/initCond/21830101.cpio
+#--------------------------------------------------------------------------------------------------------
+# run the model
+cd $workdir
+./fms.x
+#--------------------------------------------------------------------------------------------------------

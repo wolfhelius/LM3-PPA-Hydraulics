@@ -1,0 +1,651 @@
+\documentclass{article}
+%\documentclass[final,single]{article}
+\addtolength{\oddsidemargin}{-.2in}
+\addtolength{\evensidemargin}{-.2in}
+\addtolength{\textwidth}{.4in}
+
+%\usepackage{ametsoc}
+\usepackage[intlimits]{amsmath}
+\usepackage{amssymb,latexsym,graphicx}
+\usepackage{lscape}
+\usepackage{units}
+\usepackage{natbib}  % all options handled by \bibstyle@XXX below
+\usepackage{booktabs}
+\usepackage[notcite,notref]{showkeys}
+\usepackage[osf]{mathpazo} % palatino fonts
+\usepackage[linkcolor=blue,citecolor=black,colorlinks=true]{hyperref}
+\usepackage{todonotes}
+\usepackage{siunitx}
+\sisetup{detect-all}
+% additional SI unis
+\DeclareSIUnit\individual{individual}
+\DeclareSIUnit\einstein{E}
+\DeclareSIUnit\year{year}
+
+\title{Fast time-scale processes in the Perfect 
+Plasticity Approximation (PPA) vegetation model}
+
+% common notation
+\newcommand{\wl}{w_l}
+\newcommand{\ws}{w_s}
+\newcommand{\wlk}{w_{l,k}}
+\newcommand{\wsk}{w_{s,k}}
+\newcommand{\LAI}{\ensuremath{\text{LAI}}}
+\newcommand{\NPP}{\ensuremath{\text{NPP}}}
+% derivatives
+\newcommand{\pderiv}[2]{\frac{\partial #1}{\partial #2}} % partial derivative
+\newcommand{\incr}[2]{\frac{\partial #1}{\partial #2}\Delta #2} 
+\newcommand{\iincr}[2]{\Delta #2\frac{\partial #1}{\partial #2}}
+\newcommand{\ppderiv}[2]{\Big(\pderiv{#1}{#2}\Big)}   % parenthesized partial derivative 
+\newcommand{\fderiv}[2]{\frac{d #1}{d #2}} % full derivative
+
+\newcommand{\nindivs}{n}         % density of individuals in cohort
+\newcommand{\crownArea}{a}       % croen area of individual
+\newcommand{\csum}{\sum_{k=1}^N} % sum over all cohorts
+\newcommand{\layerfrac}{f}       % cohort crown fraction
+\newcommand{\intercept}{\gamma}  % interceptef fraction of precip
+\newcommand{\avgIntercept}{\overline{\gamma}}
+
+\newcommand{\uptakeFracMax}{f^r}
+\newcommand{\uptakeFrac}{f^u}
+\newcommand{\dfr}{D_{fr}}
+\newcommand{\resScaler}{C_r}
+\newcommand{\transpiration}{E_t}
+
+\newcommand{\srl}{\lambda}% specific root length
+\newcommand{\psisat}{\psi_*}% saturation (air entry) water potential
+\newcommand{\psilow}{\psi_{m}}
+\newcommand{\qsat}{\ensuremath{q^\ast}}
+
+% chemical species
+\newcommand{\carbon}{\ensuremath{\mathrm{C}}}
+\newcommand{\oxigen}{\ensuremath{\mathrm{O}}}
+\newcommand{\otwo}{\ensuremath{\mathrm{O_2}}}
+\newcommand{\cotwo}{\ensuremath{\mathrm{CO_2}}}
+\newcommand{\water}{\ensuremath{\mathrm{H_2O}}}
+
+% photosynthesis
+\newcommand{\gsbar}{\ensuremath{\overline{g_s}}}
+\newcommand{\anbar}{\ensuremath{\overline{A_n}}}
+
+
+\begin{document}
+\maketitle
+\pagestyle{headings}
+
+\numberwithin{equation}{section}
+
+% ===========================================================================
+\section{Mass and energy balance equations}
+
+To represent the sub-grid scale heterogeneity of the land surface, each land
+grid cell can be split in a number of tiles, with each tile having distinct
+physical and biological properties, and its own exchange with the atmosphere.
+For example, one tile may represent natural vegetation, another -- cropland, and
+yet another -- secondary vegetation that was last disturbed certain amount of
+time ago. The energy and mass exchange is calculated separately for each tile,
+and the fluxes are aggregated to the grid cell level in the atmosphere.
+
+In the presented manuscript, we only consider one tile (natural vegetation).
+
+Within each tile the vegetation is represented by $N$ cohorts arranged in $L$
+layers. Cohorts are numbered from the tallest to the shortest; layers are numbered from
+top of the canopy to the bottom. Each cohort $k$ belongs to one layer
+(that is, cohorts do not straddle the boundaries between layers). Canopy of
+cohort $k$ occupies fraction $\layerfrac_k$ of its layer area. Sum of all
+$\layerfrac_k$ is equal to 1 for each layer --- that is, the cohort canopies
+fill the entire layer area:
+\begin{equation}
+   \sum_{k \in L} \layerfrac_k \equiv 1
+\end{equation}
+
+Each cohort $k$ is composed of identical individuals, with density $\nindivs_k$
+individuals per unit area of tile. Each individual in the cohort has crown area
+$\crownArea_k$. We assume that the completely fill the layer space entirely. Since
+there is no guarantee that the sum of all crown areas (determined by allometric
+relationships) in the layer is going to be equal to the tile area, we need to
+stretch canopies of at least some layers. The fraction of the tile area covered
+by the canopy of $k$-th cohort is:
+%
+\begin{equation}
+   \label{cohort-frac}
+   \layerfrac_k = \nindivs_k \crownArea_k \times
+     \big(\sum_{i \in L}\nindivs_i\crownArea_i\big)^{-1}
+\end{equation}
+%
+where the summation is done over all cohorts that belong to layer $L$. 
+The leaf area index (\LAI) of each cohort needs to be calculated to preserve
+total area of cohort's leaves per unit tile area: $\nindivs_k A_k = \LAI_k
+\layerfrac_k$, where $A_k$ is the total one-sided area of leaves per individual.
+
+\begin{equation}
+   \LAI_k = \frac{\nindivs_k A_k}{\layerfrac_k}
+         = \frac{A_k}{\crownArea_k}\sum_{i \in L}\nindivs_i\crownArea_i
+\end{equation}
+
+Each cohorts's canopy has its own temperature $T_v$, and amounts of intercepted water
+$\wl$ and snow $\ws$. All cohorts exchange water, energy, and carbon dioxide with the common 
+canopy air space of mass $m_c$, temperature $T_c$ and specific 
+humidity $q_c$.
+
+
+With these assumptions, the energy balance of the canopy $k$ can be expressed as:
+%
+\begin{align}\label{vegn-eb}
+   \fderiv{\mathbb{C}_k T_{v,k}}{t} = R_{Sv,k} + R_{Lv,k} + 
+        \mathbb{H}_{v,k} - \mathbb{L}_{v,k} - L_f M_{i,k}
+\end{align}
+where $\mathbb{C}_k$ is the total heat capacity of the canopy, 
+$R_{Sv,k}$ and $R_{Lv,k}$ are the net short-wave and long-wave radiative balances of the $k$-th cohort canopy,
+$\mathbb{H}_{v,k}$ is the total sensible heat balance of the canopy, 
+$\mathbb{L}_{v,k}$ is the total latent heat loss by the canopy,
+and
+$L_f M_{i,k}$ is the heat associated with the phase transitions of the intercepted water.
+
+The total heat capacity of the cohort canopy $\mathbb{C}_k$ is sum of heat
+capacities of leaves $C_{v,k}$, intercepted water $\wlk$, and intercepted snow
+$\wsk$:
+\begin{equation}
+  \mathbb{C}_k = C_{v,k} + \wlk c_l + \wsk c_s
+\end{equation}
+%
+$c_l$ and $c_s$ are the specific heat capacities of the liquid and frozen water, respectively,
+
+Net radiative balances $R_{Sv,k}$ and $R_{Lv,k}$ are calculated using two-stream
+approximation, with the assumption of spherical leaf angular distribution~\cite{Pinty-Lavergne-etal-2006}.
+
+The sensible heat term $\mathbb{H}_{v,k}$ in equation~\eqref{vegn-eb} is:
+%
+\begin{equation}
+   \mathbb{H}_{v,k} = - H_{v,k} + H_{pl,i} \intercept_{il,k} + H_{ps,i} \intercept_{is,k} 
+   - c_l T_{v,k} D_{l,k} - c_s T_{v,k} D_{s,k}
+\end{equation}
+%
+where $H_{v,k}$ is the sensible heat flux due to turbulent exchange with the canopy air,
+$H_{pl,i}$ and $H_{ps,i}$ are the fluxes of heat carried by liquid and solid precipitation,
+intercepted by the $k$-th cohort canopy with coefficients $\intercept_{il,k}$,
+$\intercept_{is,k}$, 
+and $D_{l,k}$, $D_{s,k}$ are the rates of water and snow drip from the canopy.
+
+The latent heat term:
+\begin{equation}
+   \mathbb{L}_{v,k} =  E_{t,k} L_e(T_{u,k}) + E_{l,k} L_e(T_{v,k}) + E_{s,k} L_s(T_{v,k})
+\end{equation}
+%
+where
+where
+$E_{t,k}$ is transpiration, 
+$E_{l,k}$ -- evaporation of liquid intercepted water,
+and
+$E_{s,k}$ -- sublimation of intercepted snow.
+$L_e(T)$ and $L_s(T)$ are the temperature-dependent specific heats of
+evaporation and sublimation, respectively.
+$T_{u,k}$ is the temperature of the water the cohort uptakes from the soil.
+
+Note that the terms of equation~\eqref{vegn-eb} are calculated per unit area of
+the stretched canopy. These units are convenient for the energy balance calculations,
+especially for radiative transport in the multy-cohohrt canopy.
+
+Cohort liquid and solid water balance, respectively:
+%
+\begin{align}
+   \label{vegn-mb-l}
+   \fderiv{\wlk}{t} & = \intercept_{il,k} P_{l,i} - D_{l,k} - E_{l,k} + M_{i,k} \\
+   \label{vegn-mb-f}
+   \fderiv{\wsk}{t} & = \intercept_{is,k} P_{s,i} - D_{s,k} - E_{s,k} - M_{i,k}
+\end{align}
+%
+where $P_{l,i}$ and $P_{s,i}$ are liquid ans solid precipitation on top of layer $i$,
+$\intercept_{il,k}$ and $\intercept_{is,k}$ are the fractions of liquid and solid
+precipitation that cohort $k$ intecepts,
+$D_{l,k}$ and $D_{s,k}$ are the rates of water and snow drip from the canopy,
+and
+$M_{i,k}$ is the rate of snow melt on the canopy of $k$-th cohort.
+
+On top of the canopy $P_l^1$ is just the rainfall rate from the atmosphere, and
+$P_s^1$ is the snowfall rate. 
+For layers $i>1$ we can write: 
+%
+\begin{align}
+   P_{l,i} & = \sum_{k \in i-1} \layerfrac_k (1-\intercept_{il,k})P_{l,i-1} \label{drip-l} \\
+   P_{s,i} & = \sum_{k \in i-1} \layerfrac_k (1-\intercept_{is,k})P_{s,i-1} \label{drip-s} 
+\end{align}
+%
+where the summation is done over all cohorts in layer $i-1$.
+Here we assume that the the drip from the canopy never gets intercepted by the
+layers below, and contributes directly to the water and energy balance of the underlying 
+surface.
+
+With these assumptions, canopy air water (specific humidity) balance equation is:
+%
+\begin{equation}\label{cana-mb}
+   m_c\fderiv{q_c}{t} = \csum \layerfrac_k E_{v,k} + E_g - E_a
+\end{equation}
+%
+where 
+$E_g$ is water vapor flux from the ground surface,
+$E_a$ is the water vapor flux to the atmosphere.
+The total water vapor flux $E_{v,k}$ from $k$-th cohort canopy to the canopy 
+air is a sum of three components:
+\begin{equation}
+   E_{v,k} \equiv E_{t,k} + E_{l,k} + E_{s,k} 
+\end{equation}
+
+Canopy air energy balance:
+\begin{align}\label{cana-eb}
+   m_c\fderiv{}{t}\big((1-q_c)c_p T_c + q_c c_v T_c\big)
+      & = \csum  \layerfrac_k H_{v,k} + H_g - H_a
+   \notag \\
+      & + c_v \Big(\csum  \layerfrac_k T_{v,k} E_{v,k} + T_g E_g - T_c E_a\Big)
+\end{align}
+%
+where
+$c_p$ and $c_v$ are specific heats of dry air and water vapor, respectively,
+$H_{v,k}$ is the flux of sensible heat from $k$-th cohort canopy to the canopy air,
+$H_g$ is the sensible heat flux from the ground surface to the canopy air,
+$H_a$ is the sensible heat flux from canopy air to the atmosphere.
+
+Energy balance of the ground surface:
+%
+\begin{equation}\label{grnd-eb}
+   R_{Sg}+R_{Lg}-H_g - L_g E_g - G - L_f M_g = 0
+\end{equation}
+
+\section{Non-water-stressed photosynthesis}
+
+We assume that the whole canopy is isothermal with temperature $T_v$, and the
+air in the leaf interior is saturated with specific humidity equal to $q^*(T_v)$.
+However, the radiation absorbed by the leaves is not distributed uniformly
+through the entire depth of the canopy, with upper parts of the canopy getting
+more light and the lower parts being shadowed by the upper ones. Therefore the
+net photosynthesis  $A_n$ and, accordingly, stomatal conductance for water vapor
+$g_s$ are going to depend on vertical coordinate. Since the dependency of photosynthesis
+on light level is highly nonlinear, it is necessary to consider the vertical
+profile of $A_n$ and $g_s$ to get average canopy values, rather then base the
+calculations on average available radiation. 
+
+To begin with, let's consider a thin layer of the canopy that receives flux $Q$
+of the photosynthetically-active incident radiation per unit of leaf area.
+Obviously, $Q$ will depend on the vertical coordinate, according to the
+radiation absorption and scattering relationships in the canopy.
+
+The link between stomatal conductance $g_s$ \si{\mole\of\water\per\meter\squared\per\second}, 
+the rate of net photosynthesis $A_n$, \si{\mole\of\cotwo\per\meter\squared\per\second},
+intercellular concentration of \cotwo\ $C_i$,
+\si{\mole\of\cotwo\per\mole\of{air}} and difference in specific humidities in
+stomata and specific humidity in canopy air $q_a$,
+\si{\kilogram\of\water\per\kilogram\of{air}} can be expressed as:
+%
+\begin{equation}\label{E:Leuning}
+   g_s = \frac{m A_n}{(C_i-\Gamma_*)(1+(\qsat(T_v)-q_a)/d_0)}
+\end{equation}
+%
+where $m$ is the slope of the stomatal conductance relationship,
+\si{\mole\of\water\per\mole\of{air}},
+$d_0$ is a reference value of a water vapor deficit, 
+\si{\kilogram\of\water\per\kilogram\of{air}},
+$\Gamma_*$ (\si{\mole\of\cotwo\per\mole\of{air}}) is the \cotwo\ compensation 
+point:
+%
+\begin{equation}
+   \Gamma_* = \alpha_c[\otwo]\frac{K_\carbon}{2 K_\oxigen}
+\end{equation}
+%
+$\alpha_c = 0.21$ is the maximum ratio of oxygenation to carboxylation, $[\otwo]
+= \SI{0.209}{\mole\of\otwo\per\mole\of{air}}$ is the concentration of oxigen in
+canopy air, and $K_\carbon$ (\si{\mole\of\cotwo\per\mole\of{air}}) and
+$K_\oxigen$ (\si{\mole\of\otwo\per\mole\of{air}}) are the Michaelis-Menten
+constants for \cotwo \ and \otwo, respectively. $K_\carbon$ and $K_\oxigen$
+depend on temperature proportionally to Arrhenius function:
+%
+\begin{equation}\label{E:Arrhenius}
+   f_A(E_0,T) = \exp\left[E_{0,X}\left(\frac{1}{\SI{288.2}{\kelvin}}-\frac{1}{T}\right)\right]
+\end{equation}
+%
+so that
+%
+\begin{align}
+  K_\carbon &= D_\carbon f_A(E_{0,\carbon},T_v) \\
+  K_\oxigen &= D_\oxigen f_A(E_{0,\oxigen},T_v)  
+\end{align}
+%
+with respective constants: 
+$D_\carbon = \SI{1.5e-4}{\mole\of\cotwo\per\mole\of{air}}$,
+$E_{0,\carbon} = \SI{6000}{\kelvin}$, 
+$D_\oxigen = \SI{0.25}{\mole\of\otwo\per\mole\of{air}}$,
+and
+$E_{0,\oxigen} = \SI{1400}{\kelvin}$.
+
+The equation \eqref{E:Leuning} is a simplification of \cite{1995-Leuning} 
+empirical relationship in the assumption of negligible cuticular conductance.
+
+On the other hand, net photosynthesis $A_n$ can also be expressed as a carbon
+dioxide diffusive flux between canopy air and the stomata space:
+\begin{equation}\label{E:cotwodiff}
+   A_n = \frac{g_s}{1.6}(C_a-C_i)
+\end{equation}
+where $C_a$ is the concentration of \cotwo\ in the canopy air; the factor 1.6 is
+the ratio of diffusivities for water vapor and \cotwo. We assume that the
+diffusion of \cotwo\ is mostly limited by stomatal conductance and not by the leaf
+boundary layer conductance.
+
+Combining equations \eqref{E:Leuning} and \eqref{E:cotwodiff}, we can get an
+expression for intercellular concentration of \cotwo:
+\begin{equation}
+  C_i = \frac{
+       C_a+\Gamma_*\frac{1.6}{m}\left( 1+\frac{\qsat(T_v)-q_a}{d_0} \right)
+     }{
+       1+\frac{1.6}{m}\left( 1+\frac{\qsat(T_v)-q_a}{d_0} \right)
+     }
+\end{equation}
+
+The mechanistic model of photosynthesis \cite{Farquhar-etal-1980}, with
+extensions introduced in \cite{Collatz-etal-1991,Collatz-etal-1992}   expresses
+net photosynthesis as a difference between gross photosynthesis and leaf
+respiration. Furthermore, the gross photosynthesis is expressed as a minimum of
+several physiological process rates:
+%
+\begin{equation}\label{E:an}
+   A_n = f_T(T_v) \begin{cases}
+      \min(J_{E,C3}, J_C, J_j)     - \gamma V_m(T_v) & \text{for C3 plants}, \\
+      \min(J_{E,C4}, J_C, J_{CO2}) - \gamma V_m(T_v) & \text{for C4 plants}.
+   \end{cases}
+\end{equation}
+%
+where 
+$f_T(T_v)$ is thermal inhibition factor,
+$J_E$ is the light limited rate, 
+$J_C$ is the Rubisco limited rate,  
+$J_j$ is the export limited rate of carboxylation, 
+$J_C$ is a \cotwo -limited rate,
+and $V_m(T_v)$ is the maximum velocity of carboxylase,
+\si{\mole\of\cotwo\per\meter\squared\per\second}; the term $\gamma V_m(T_v)$
+in both cases of equation \eqref{E:an} represents leaf respiration. 
+
+The thermal inhibition factor is expressed as
+%
+\begin{equation}\label{e:thermal-inhibition}
+   f_T(T_v) = 
+   \frac{1}{
+      \left[1+\exp(0.4(\SI{5}{\celsius} - T_v))\right]\,
+      \left[1+\exp(0.4(T_v - \SI{45}{\celsius}))\right]
+   }
+\end{equation}
+%
+and affects carbon acquisition and respiration equally.
+
+The maximum velocity of carboxylase $V_m$ depends on the temperature of the 
+leaf and on the leaf age, \cite{Wilson-Baldocchi-etal-2001a}:
+%
+\begin{equation}
+  V_m(T_v) = V_{\max} f_A(E_V,T_v) \exp\Big(-\max\Big[\frac{t-t_0}{\tau},0\Big]\Big)
+\end{equation}
+%
+where $V_{\max}$ is species-dependent constant, 
+$t$ is the age of leaf, $t_0$ is the time of leaf aging onset, and $\tau$ is 
+aging rate.
+Note that in the configuration described in this manuscript the aging is only
+applied to temperate deciduous trees.
+
+For C3 plants, \cite{Collatz-etal-1991}:
+\begin{subequations}\label{E:c3limits}
+\begin{align}
+   J_E &= a \alpha Q \frac{C_i - \Gamma_*}{C_i+2\Gamma_*} \\
+   J_C &= V_m(T_v) \frac{C_i -\Gamma_*}{C_i + K_\carbon(T_v)\frac{p_{ref}}{p}
+        \left(
+            1+\frac{p}{p_{ref}}\frac{[O_2]}{K_\oxigen(T_v)}
+	\right)
+      } \\
+   J_j &= \frac{V_m(T_v)}{2}
+\end{align}
+\end{subequations}
+%
+where
+$a$ is the leaf absorptance of photosynthetically-active radiation (PAR), 
+$Q$ is incident PAR, \si{\einstein\per\meter\squared\per\second},
+%
+\footnote{\SI{1}{E}(einstein)=\SI{6.022e23}{photons}, regardless of the photon
+energy. In other words, one einstein is defined as one \si{mole} of photons.}
+%
+$\alpha$ is intrinsic quantum efficiency of photosynthesis,
+    \si{\mole\of\cotwo\per\einstein}, 
+$p$ is atmospheric pressure and 
+$p_{ref}=\SI{1e5}{\pascal}$ is the reference atmospheric pressure.
+
+For C4 plants, \cite{Collatz-etal-1992}:
+%
+\begin{subequations}\label{E:c4limits}
+\begin{align}
+   J_E &= a \alpha Q\\
+   J_C &= V_m(T_v)\\
+   J_{CO2} &= 18000 V_m(T_v) C_i 
+\end{align}
+\end{subequations}
+
+While the solution of the equations \eqref{E:an}-\eqref{E:c4limits} gives a
+photosynthesis rate for a thin canopy layer, given PAR flux $Q$ incident to this
+layer, what we actually need is an average photosynthesis for the entire canopy.
+Assuming that PAR flux $Q=Q(L)$ monotonically decreases with canopy depth $L$
+(defined by equation~\eqref{canopy-depth-definition} on
+page~\pageref{canopy-depth-definition}), we can define a layer $L_{eq}$ where
+the light-limited rate $J_E$ is equal to the minimum of other limiting rates.
+The photosynthesis below the level $L_{eq}$ will be a function of light
+availability, while above this level $A_n$ will be function of other limiting
+rates. The net photosynthesis averaged over the entire canopy depth can be
+expressed as
+%
+\begin{equation}\label{E:anbar}
+   \anbar = \frac{f_T(T_v)}{\LAI}\Bigg[
+      J_{\min} L_{eq} +
+      \int_{L_{eq}}^{\LAI}J_E(L)\,dL 
+   \Bigg]
+   -f_T(T_v)\gamma V_m(T_v)
+\end{equation}
+%
+where
+%
+\begin{equation}
+   J_{\min} = \begin{cases}
+      \min(J_C, J_j)      & \text{for C3 plants}, \\
+      \min(J_C, J_{CO2})  & \text{for C4 plants}.
+   \end{cases}
+\end{equation}
+
+Assuming that the dependence of light on canopy depth can be described by 
+Beer-Lambert-Bouguer law:
+\begin{equation}\label{E:bouger}
+   Q(L)=Q_0\exp(-\kappa L)
+\end{equation}
+we can obtain the following expressions for the integral in the right-hand side of
+\eqref{E:anbar}:
+%
+\begin{equation}
+  \int_{L_{eq}}^{\LAI}J_E(L)\,dL =
+  a \alpha' Q_0\frac{\exp(-\kappa\,L_{eq})-\exp(-\kappa\,\LAI)}{\kappa}
+\end{equation}
+%
+and for $L_{eq}$:
+%
+\begin{equation}
+   L_{eq} = \frac{1}{\kappa}\log\left(\frac{a \alpha' Q_0}{J_{\min}}\right)
+\end{equation} 
+%
+where
+%
+\begin{equation}\label{E:aprime}
+   \alpha' = \begin{cases}
+      \alpha \frac{C_i - \Gamma_*}{C_i+2\Gamma_*} & \text{for C3 plants}, \\
+      \alpha & \text{for C4 plants}.
+   \end{cases}
+\end{equation}
+
+Average stomatal conductance is calculated from \eqref{E:anbar} similar to 
+equation~\eqref{E:Leuning}
+\begin{equation}
+   \gsbar = \begin{cases}
+      \frac{m \anbar}{(C_i-\Gamma_*)(1+(\qsat(T_v)-q_a)/d_0)} & \anbar > 0 \\
+      g_{s,\min} & \anbar \leq 0
+   \end{cases}
+\end{equation}
+%
+where $g_{s,min} = \SI{0.01}{\mole\of\water\per\meter\squared\per\second}$
+is the minimum stomatal conductance allowed in the model.
+
+The model applies some further corrections to the calculated net photosynthesis
+and stomatal conductance. If there is water or snow on the canopy, the
+photosynthesis is reduced proportionally to the covered fraction of leaves:
+%
+\begin{align}
+   \anbar & = \anbar\,(1-(f_s+f_w)\alpha_\text{wet}) \\
+   \gsbar & = \gsbar\,(1-(f_s+f_w)\alpha_\text{wet})
+\end{align}
+%
+where $f_l$ and $f_s$ are the fractions of canopy covered by liquid water and
+snow, respectively;
+$\alpha_\text{wet}$ is the down-regulation coefficient assumed to be equal 0.3.
+That means that the photosynthesis of the leaf fully covered by water or snow
+will be reduced by 30\% compared to the dry leaf.
+
+The model then imposes an upper limit on the value of stomatal conductance: if the
+calculated $\gsbar$ is higher than the limit $g_s^{\max} =
+\SI{0.25}{\mole\of\water\per\meter\squared\per\second}$, then the stomatal
+conductance and net photosynthesis are adjusted:
+%
+\begin{align}
+   \anbar & = \anbar \times \begin{cases}
+          {g_s^{\max}}/{\gsbar}, &  \anbar > 0 \\
+          1, & \anbar \le 0
+       \end{cases} \\
+   \gsbar & = g_s^{\max}
+\end{align}
+
+% - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+\section{Effect of water on photosynthesis}
+
+Last, but not least, the stomatal conductance and photosynthesis need to be
+adjusted for available water limitations. Given stomatal conductance,
+the water demand per unit area of land, \si{\mole\of\water\per\meter\squared\per\second} 
+can be calculated as
+%
+\begin{equation}
+   U_d = \gsbar \, \LAI \, (q^*(T_v)-q_a) \frac{M_{\text{air}}}{M_\water}
+\end{equation}
+%
+where the factor $M_{\text{air}}/M_\water$ is used to convert water vapor 
+deficit to units of \si{\mole\per\mole}, to be compatible with the units of 
+\gsbar.
+
+Given the maximum water supply rate $U_{\max}$, the net photosynthesis and
+stomatal conductance are adjusted as:
+%
+\begin{align}
+   \anbar & = \anbar \times \min(U_{\max}/U_d,1) \\
+   \gsbar & = \gsbar \times \min(U_{\max}/U_d,1)
+\end{align}
+
+The maximum soil-controlled uptake by the root is defined as that with root water
+potential at the plant permanent wilting point. To calculate this maximum rate
+of water uptake we use the standard 2D radial flow model formulation
+\cite{Darcy-1856a}, in the quasi-steady flow approximation.
+
+Let 
+$u$ be the water uptake rate per unit length of fine root, \si{\kilogram\per\meter\per\second},
+$R$ -- characteristic radial half-distance to the next root, \si{\meter}, 
+$r_r$ -- root radius, \si{\meter}, 
+and 
+$r$ -- "microscopic"  distance from root axis, \si{\meter}.
+
+For steady flow toward the root,
+\begin{equation}
+   u = 2 \pi r K \frac{d \psi}{d r}
+\end{equation}
+where $K=K(\psi)$ is unsaturated hydraulic conductivity \si{\kilogram\per\meter\squared\per\second}, 
+\begin{equation}\label{K:soil}
+   K(\psi) = \begin{cases}
+      \smash{K_s \left(\frac{\psi}{\psisat}\right)^{-(2+3/b)}} & \psi \leq \psisat \\
+      K_s  & \psi > \psisat
+      \end{cases}
+\end{equation}
+where 
+$\psi$ is the soil water matric head, \si{\meter}, and 
+$\psisat$ is the air entry water potential. 
+Note that since the flow is assumed to be steady-state, $u$ doesn't depend on $r$. 
+
+Integrating from root-soil interface to "bulk" soil (with matric head $\psi_s$ at
+the distance  $R$ from the root axis, and $\psi_r$ at the root surface):
+\begin{equation}\label{u0}
+   \int_{r_r}^R \frac{u dr}{2 \pi r} = \int_{\psi_r}^{\psi_s} K(\psi) d\psi
+\end{equation}
+or, equivalently:
+\begin{equation}\label{u1}
+   u = \frac{2 \pi}{\ln(R/r_r)} \int_{\psi_r}^{\psi_s} K(\psi) d\psi
+\end{equation}
+This relationship is assumed to hold at a macroscopic point, i.e., a model layer
+in our case. The integral in the righ-hand side of equation~\eqref{u0} is
+sometimes called \emph{matric flux potential}, \cite{Raats-2007a}.
+
+On the other hand, the water flux through the root skin per unit length of root
+is
+%
+\begin{equation}\label{u:root}
+   u = 2 \pi r_r K_r(\psi_r - \psi_x)
+\end{equation}
+%
+where $K_r$ is permeability of root membrane per unit membrane area, 
+\si{\kilogram\per\cubic\meter\per\second},
+and $\psi_x$ is the water potential inside the  root (xylem water potential) 
+\si{\meter}.
+
+The characteristic half-distance between roots $R$ can be expressed in terms of
+total root length per unit volume of soil. Suppoze that cohort $k$ has the
+specific root length $\lambda_k$, \si{\meter\per\kilogram\of{C}} (SRL, length of
+fine roots per unit mass of carbon) and the volumetric density of root biomass
+$b_{r,k}$, \si{\kilogram\of{C}\per\cubic\meter}. The total length of roots of all
+cohorts per unit volume is $\sum\nindivs_k\lambda_k b_{r,k}$; therefore the area
+of soil cross-section surrounding the root is $A=\pi
+R^2=1/\sum\nindivs_k\lambda_k b_{r,k}$, giving
+\begin{equation}
+  R=\Big(\pi \sum\nindivs_k \lambda_k b_{r,k}\Big)^{-1/2}
+\end{equation}
+
+Combining \eqref{u1}, \eqref{K:soil}, and \eqref{u:root}, after tedious algebraic
+transformations we get:
+\begin{multline}\label{u:final}
+   r_r K_r(\psi_r - \psi_x)=\frac{2 \pi K_s}{\ln(R/r_r)}\Bigg\{
+        \frac{\psisat}{n} \bigg[
+           \left(\frac{\min(\psi_s,\psisat)}{\psisat}\right)^n -
+           \left(\frac{\min(\psi_r,\psisat)}{\psisat}\right)^n 
+        \bigg]\\
+      +\max(0,\psi_s-\psisat) - \max(0,\psi_r-\psisat)
+   \Bigg\}
+\end{multline}
+%
+where we introduced notation $n=-(1+3/b)$.
+
+Given xylem water potential $\psi_x$ and soil water potential $\psi_s$, we can
+solve the equation \eqref{u:final} to get the water potential  at the root-soil
+interface $\psi_r$, and, consequently, the water flux per unit root length
+$u=u(\psi_r,\psi_s)$. 
+
+To calculate the total water uptake, we should note that the xylem potential
+increases with depth so that $\psi_x = \psi_{x0}+z$, where $\psi_{x0}$ is the 
+xylem potential at the surface. 
+The total uptake will be then the sum of layer values, properly weighted:
+\begin{equation}\label{u:total}
+   U(\psi_{x0}) = \sum_{1}^{N} u(\psi_{x0}+z_i, \psi_i) L_i S_i
+\end{equation}
+where $z_i$ is the depth of the 
+layer, $\psi_i$ is the soil water potential in the layer, and $L_i$ is the total 
+length of roots in the layer. The additional factor $S_i$ is used to turn off uptake
+when certain conditions are met: when there is ice in the layer; when
+the uptake is negative (optional, when one-way-uptake is requested); and when
+the soil is saturated (optional, when uptake-from-sat is not requested).
+
+The maximum soil water supply to the vegetation $U_{\max}$ is calculated as the value 
+of the uptake for the xylem water potential at the surface equal to the permanent 
+wilting point $\psi_{wilt}$: $U_{\max}=U(\psi_{wilt})$.
+
+\bibliographystyle{ametsoc}
+\bibliography{literature}
+
+\end{document}
