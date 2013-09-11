@@ -182,7 +182,8 @@ integer :: id_vegn_type, id_temp, id_wl, id_ws, id_height, id_height1, id_lai, i
    id_ssc_pool, id_ssc_rate, id_t_ann, id_t_cold, id_p_ann, id_ncm, &
    id_lambda, id_afire, id_atfall, id_closs, id_cgain, id_wdgain, id_leaf_age, &
    id_phot_co2, id_ncohorts, id_nindivs, id_nlayers, id_dbh, id_crownarea, &
-   id_soil_water_supply, id_gdd, id_tc_pheno, id_bl_max, id_br_max
+   id_soil_water_supply, id_gdd, id_tc_pheno, id_bl_max, id_br_max, &
+   id_cohort_nindivs
 ! ==== end of module variables ===============================================
 
 ! ==== NetCDF declarations ===================================================
