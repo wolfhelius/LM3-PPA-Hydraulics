@@ -182,8 +182,11 @@ integer :: id_vegn_type, id_temp, id_wl, id_ws, id_height, id_height1, id_lai, i
    id_ssc_pool, id_ssc_rate, id_t_ann, id_t_cold, id_p_ann, id_ncm, &
    id_lambda, id_afire, id_atfall, id_closs, id_cgain, id_wdgain, id_leaf_age, &
    id_phot_co2, id_ncohorts, id_nindivs, id_nlayers, id_dbh, id_crownarea, &
-   id_soil_water_supply, id_gdd, id_tc_pheno, id_bl_max, id_br_max, &
-   id_cohort_nindivs
+   id_soil_water_supply, id_gdd, id_tc_pheno, id_bl_max, id_br_max
+! Adam Wolf    
+integer :: id_cc_bl, id_cc_blv, id_cc_br, id_cc_bsw, id_cc_bwood, &
+   id_cc_bseed, id_cc_nsc, id_cc_nindivs, id_cc_age, id_cc_bliving, &
+   id_cc_species, id_cc_dbh, id_cc_height, id_cc_crownarea, id_cc_layer, id_cc_size
 ! ==== end of module variables ===============================================
 
 ! ==== NetCDF declarations ===================================================
@@ -603,6 +606,26 @@ subroutine vegn_diag_init ( id_lon, id_lat, id_band, time )
 
   id_phot_co2 = register_tiled_diag_field (trim(module_name), 'qco2_phot', &
             'CO2 mixing ratio for photosynthesis calculations', 'mol CO2/mol dry air')
+            
+  ! Adam Wolf
+   id_cc_bl = register_tiled_diag_field ( trim(module_name), 'cc_bl', 'biomass of leaves', 'kg C/tree')
+   id_cc_blv = register_tiled_diag_field ( trim(module_name), 'cc_blv', 'biomass of labile store', 'kg C/tree')
+   id_cc_br = register_tiled_diag_field ( trim(module_name), 'cc_br', 'biomass of fine roots', 'kg C/tree')
+   id_cc_bsw = register_tiled_diag_field ( trim(module_name), 'cc_bsw', 'biomass of sapwood', 'kg C/tree')
+   id_cc_bwood = register_tiled_diag_field ( trim(module_name), 'cc_bwood', 'biomass of heartwood', 'kg C/tree')
+   id_cc_bseed = register_tiled_diag_field ( trim(module_name), 'cc_bseed', 'biomass of seed', 'kg C/tree')
+   id_cc_nsc = register_tiled_diag_field ( trim(module_name), 'cc_nsc', 'biomass of non-structural pool', 'kg C/tree')
+   id_cc_nindivs = register_tiled_diag_field ( trim(module_name), 'cc_nindivs', 'density of individuals per cohort', 'trees per m2')
+   id_cc_age = register_tiled_diag_field ( trim(module_name), 'cc_age', 'age of cohort', 'years')
+   id_cc_bliving = register_tiled_diag_field ( trim(module_name), 'cc_bliving', 'living biomass', 'kg C/tree')
+   id_cc_species = register_tiled_diag_field ( trim(module_name), 'cc_species', 'vegetation species number' )
+   id_cc_dbh = register_tiled_diag_field ( trim(module_name), 'cc_dbh', 'cohort dbh' , 'm')
+   id_cc_height = register_tiled_diag_field ( trim(module_name), 'cc_height', 'cohort height', 'm' )
+   id_cc_crownarea = register_tiled_diag_field ( trim(module_name), 'cc_crownarea', 'cohort crownarea', 'm2' )
+   id_cc_layer = register_tiled_diag_field ( trim(module_name), 'cc_layer', 'layer of cohort')
+   id_cc_size = register_tiled_diag_field ( trim(module_name), 'cc_size', 'array size')
+   
+               
 end subroutine
 
 
@@ -1452,6 +1475,7 @@ subroutine update_vegn_slow( )
   integer :: i,j,k ! current point indices
   integer :: ii ! pool and cohort iterator
   integer :: N ! number of cohorts
+  integer :: cc_size ! cohort array size
   integer :: steps_per_day ! number of fast time steps per day
   real    :: weight_ncm ! low-pass filter value for the number of cold months
   type(vegn_cohort_type), pointer :: cc(:) ! shorthand for cohort array
@@ -1621,9 +1645,6 @@ subroutine update_vegn_slow( )
      call send_tile_data(id_ssc_rate,tile%vegn%ssc_rate,tile%diag)
 
      N=tile%vegn%n_cohorts ; cc=>tile%vegn%cohorts
-     call send_tile_data(id_ncohorts, real(N),              tile%diag)
-     call send_tile_data(id_nindivs,  sum(cc(1:N)%nindivs), tile%diag)
-     call send_tile_data(id_nlayers,  real(cc(N)%layer),    tile%diag)
      
      call send_tile_data(id_bl,      sum(cc(1:N)%bl     *cc(1:N)%nindivs), tile%diag)
      call send_tile_data(id_blv,     sum(cc(1:N)%blv    *cc(1:N)%nindivs), tile%diag)
@@ -1634,16 +1655,12 @@ subroutine update_vegn_slow( )
      call send_tile_data(id_nsc,     sum(cc(1:N)%nsc    *cc(1:N)%nindivs), tile%diag)
      call send_tile_data(id_bl_max,  sum(cc(1:N)%bl_max *cc(1:N)%nindivs), tile%diag)
      call send_tile_data(id_br_max,  sum(cc(1:N)%br_max *cc(1:N)%nindivs), tile%diag)
-     total_nindivs = sum(cc(1:N)%nindivs)
-     if (total_nindivs > 0 ) then
-        call send_tile_data(id_dbh,       sum(cc(1:N)%dbh       *cc(1:N)%nindivs)/total_nindivs, tile%diag)
-        call send_tile_data(id_crownarea, sum(cc(1:N)%crownarea *cc(1:N)%nindivs)/total_nindivs, tile%diag)
-     endif
      call send_tile_data(id_fuel,    tile%vegn%fuel, tile%diag)
      
+     ! Ensheng
      call send_tile_data(id_species, real(cc(1)%species), tile%diag)
      call send_tile_data(id_status,  real(cc(1)%status),  tile%diag)
-     call send_tile_data(id_leaf_age,real(cc(1)%leaf_age),  tile%diag)!ens
+     call send_tile_data(id_leaf_age,real(cc(1)%leaf_age),  tile%diag)
 
      ! carbon budget tracking
      call send_tile_data(id_fsc_in,  tile%vegn%fsc_in,  tile%diag)
@@ -1652,6 +1669,38 @@ subroutine update_vegn_slow( )
      call send_tile_data(id_ssc_out, tile%vegn%ssc_out, tile%diag)
      call send_tile_data(id_veg_in,  tile%vegn%veg_in,  tile%diag)
      call send_tile_data(id_veg_out, tile%vegn%veg_out, tile%diag)
+
+	 ! Adam Wolf 
+	 if (year1 /= year0 ) then
+	 	 ! annual output
+		 total_nindivs = sum(cc(1:N)%nindivs)
+		 cc_size = SIZE(cc) !array dimension
+		 call send_tile_data(id_cc_size, cc_size,        tile%diag)
+		 if (total_nindivs > 0 ) then
+			call send_tile_data(id_dbh,       sum(cc(1:N)%dbh       *cc(1:N)%nindivs)/total_nindivs, tile%diag)
+			call send_tile_data(id_crownarea, sum(cc(1:N)%crownarea *cc(1:N)%nindivs)/total_nindivs, tile%diag)
+		 endif
+		 call send_tile_data(id_ncohorts,   N,          tile%diag)
+		 call send_tile_data(id_nindivs,    sum(cc(1:N)%nindivs), tile%diag)
+		 call send_tile_data(id_nlayers,    cc(N)%layer,tile%diag)
+
+		 call send_tile_data(id_cc_bl,      cc%bl, 		tile%diag)
+		 call send_tile_data(id_cc_blv,     cc%blv, 	tile%diag)
+		 call send_tile_data(id_cc_br,      cc%br, 		tile%diag)
+		 call send_tile_data(id_cc_bsw,     cc%bsw, 	tile%diag)
+		 call send_tile_data(id_cc_bwood,   cc%bwood, 	tile%diag)
+		 call send_tile_data(id_cc_bseed,   cc%bseed, 	tile%diag)
+		 call send_tile_data(id_cc_nsc,     cc%nsc, 	tile%diag)
+		 call send_tile_data(id_cc_nindivs, cc%nindivs, tile%diag)
+		 call send_tile_data(id_cc_age,     cc%age, 	tile%diag)
+		 call send_tile_data(id_cc_bliving, cc%bliving, tile%diag)
+		 call send_tile_data(id_cc_species, cc%species, tile%diag)
+		 call send_tile_data(id_cc_dbh,     cc%dbh, 	tile%diag)
+		 call send_tile_data(id_cc_height,  cc%height, 	tile%diag)
+		 call send_tile_data(id_cc_crownarea,cc%crownarea, tile%diag)
+		 call send_tile_data(id_cc_layer,   cc%layer, tile%diag)
+ 	 endif
+
      ! ---- end of diagnostic section
 
      ! reset averages and number of steps to 0 before the start of new month

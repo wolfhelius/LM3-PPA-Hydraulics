@@ -36,8 +36,10 @@ public :: dump_tile_diag_fields
 public :: OP_AVERAGE, OP_SUM
 
 interface send_tile_data
-   module procedure send_tile_data_0d
-   module procedure send_tile_data_1d
+   module procedure send_tile_data_0d_real
+   module procedure send_tile_data_0d_int
+   module procedure send_tile_data_1d_real
+   module procedure send_tile_data_1d_int
 end interface
 ! ==== end of public interface ===============================================
 
@@ -144,7 +146,7 @@ function reg_field(static, mod_name, field_name, long_name, units, op) result(id
 end function reg_field
 
 ! ============================================================================
-subroutine send_tile_data_0d(id, x, buffer)
+subroutine send_tile_data_0d_real(id, x, buffer)
   integer, intent(in) :: id
   real   , intent(in) :: x
   type(diag_buff_type), intent(inout) :: buffer ! buffer is unused in this version
@@ -156,10 +158,25 @@ subroutine send_tile_data_0d(id, x, buffer)
   call get_date(lnd%time, year, month, day, hour, minute, second)
   write(id,diag_format) year,month,day,hour,minute,second,x
   
-end subroutine send_tile_data_0d
+end subroutine send_tile_data_0d_real
 
 ! ============================================================================
-subroutine send_tile_data_1d(id, x, buffer)
+subroutine send_tile_data_0d_int(id, x, buffer)
+  integer, intent(in) :: id
+  integer, intent(in) :: x
+  type(diag_buff_type), intent(inout) :: buffer ! buffer is unused in this version
+
+  integer :: year, month, day, hour, minute, second
+  character(len=*), parameter :: &
+       diag_format='(i4,"-",i2.2,"-",i2.2,1x,i2.2,":",i2.2,":",i2.2,2x,", ",99i2)'
+
+  call get_date(lnd%time, year, month, day, hour, minute, second)
+  write(id,diag_format) year,month,day,hour,minute,second,x
+  
+end subroutine send_tile_data_0d_int
+
+! ============================================================================
+subroutine send_tile_data_1d_real(id, x, buffer)
   integer, intent(in) :: id
   real   , intent(in) :: x(:)
   type(diag_buff_type), intent(inout) :: buffer ! buffer is unused in this version
@@ -172,7 +189,23 @@ subroutine send_tile_data_1d(id, x, buffer)
 
   call get_date(lnd%time, year, month, day, hour, minute, second)
   write(id,diag_format) year,month,day,hour,minute,second,x
-end subroutine send_tile_data_1d
+end subroutine send_tile_data_1d_real
+
+! ============================================================================
+subroutine send_tile_data_1d_int(id, x, buffer)
+  integer, intent(in) :: id
+  integer, intent(in) :: x(:)
+  type(diag_buff_type), intent(inout) :: buffer ! buffer is unused in this version
+
+   integer :: year, month, day, hour, minute, second
+  character(len=*), parameter :: &
+       diag_format='(i4,"-",i2.2,"-",i2.2,1x,i2.2,":",i2.2,":",i2.2,2x,", ",99i2)'
+
+  integer :: idx, i
+
+  call get_date(lnd%time, year, month, day, hour, minute, second)
+  write(id,diag_format) year,month,day,hour,minute,second,x
+end subroutine send_tile_data_1d_int
 
 ! NOTE: 2-d fields can be handled similarly to 1-d with reshape
 
