@@ -8,7 +8,8 @@ forcing_dir="$PWD/../LM3-forcing/WCR"
     workdir="$PWD/work"
    namelist="$PWD/input.nml"
 
-[[ -d $workdir ]] ||  mkdir -p $workdir/{INPUT,RESTART,DIAGNOSTICS}
+#[[ -d $workdir ]] ||  mkdir -p $workdir/{INPUT,RESTART,DIAGNOSTICS}
+[[ -d $workdir ]] ||  mkdir -p $workdir/{INPUT,RESTART,DIAGNOSTICS,WOLF,WOLF/tmp}
 
 # --- get land forcing data ---
 ls -1 $forcing_dir/WCR_*.nc > "$workdir/file.table"
@@ -38,13 +39,19 @@ cat $namelist >> input.nml
 #------------------------------------------------------------------------------
 # run the model
 ulimit -n 1024 # this is necessary for Mac OS X because default max 
-               # number of files if pretty small (256). Model opens a 
+               # number of files is pretty small (256). Model opens a 
                # lot of output files
 #for (( i=1; i<=30; i++ )) ; do 
 for (( i=1; i<=2; i++ )) ; do 
    $executable 2>&1 | tee fms.out
    [[ ${PIPESTATUS[0]} == 0 ]] || die "Model failed"
    pushd RESTART
+   	  if (i==1) then
+	   	  cp $workdir/DIAGNOSTICS/vegn* $workdir/WOLF/.
+	  else
+	   	  cp $workdir/DIAGNOSTICS/vegn* $workdir/WOLF/tmp/.
+	  fi
+   	  #python append_files('vegn_cc*')
       tar cvf ../$((1949+i*10))0101.tar *
    popd
    mv -f RESTART/* INPUT/

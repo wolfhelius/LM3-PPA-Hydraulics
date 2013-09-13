@@ -128,6 +128,10 @@ type :: vegn_tile_type
    real :: npp=0 ! net primary productivity
    real :: nep=0 ! net ecosystem productivity
    real :: rh=0 ! soil carbon lost to the atmosphere
+   
+! Adam Wolf
+   integer :: ccidMax 		  ! current max of ccid, the cohort unique identifier
+
 end type vegn_tile_type
 
 ! ==== module data ===========================================================

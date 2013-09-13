@@ -186,7 +186,8 @@ integer :: id_vegn_type, id_temp, id_wl, id_ws, id_height, id_height1, id_lai, i
 ! Adam Wolf    
 integer :: id_cc_bl, id_cc_blv, id_cc_br, id_cc_bsw, id_cc_bwood, &
    id_cc_bseed, id_cc_nsc, id_cc_nindivs, id_cc_age, id_cc_bliving, &
-   id_cc_species, id_cc_dbh, id_cc_height, id_cc_crownarea, id_cc_layer, id_cc_size
+   id_cc_species, id_cc_dbh, id_cc_height, id_cc_crownarea, id_cc_layer, &
+   id_cc_size, id_cc_id
 ! ==== end of module variables ===============================================
 
 ! ==== NetCDF declarations ===================================================
@@ -307,6 +308,7 @@ subroutine vegn_init ( id_lon, id_lat, id_band )
 
      ! read cohort data
      call read_cohort_data_i0d_fptr(unit, 'species', cohort_species_ptr )
+     call read_cohort_data_i0d_fptr(unit, 'ccid', cohort_ccid_ptr )
      call read_cohort_data_r0d_fptr(unit, 'hite', cohort_height_ptr )
      call read_cohort_data_r0d_fptr(unit, 'bl', cohort_bl_ptr )
      call read_cohort_data_r0d_fptr(unit, 'blv', cohort_blv_ptr )
@@ -335,6 +337,8 @@ subroutine vegn_init ( id_lon, id_lat, id_band )
      if(nfu_inq_var(unit,'leaf_age')==NF_NOERR) &
           call read_cohort_data_r0d_fptr(unit,'leaf_age',cohort_leaf_age_ptr)
      call read_cohort_data_r0d_fptr(unit, 'npp_prev_day', cohort_npp_previous_day_ptr )
+
+     call read_tile_data_i0d_fptr(unit,'ccidMax',vegn_ccidMax_ptr)
 
      if(nfu_inq_var(unit,'landuse')==NF_NOERR) &
           call read_tile_data_i0d_fptr(unit,'landuse',vegn_landuse_ptr)
@@ -413,6 +417,9 @@ subroutine vegn_init ( id_lon, id_lat, id_band )
      ! create and initialize cohorts for this vegetation tile
      tile%vegn%n_cohorts = init_n_cohorts
      tile%vegn%tc_pheno  = init_Tv  ! initial temperature for phenology
+     
+     tile%vegn%ccidMax = 0	     ! Adam Wolf
+     
      allocate(tile%vegn%cohorts(tile%vegn%n_cohorts))
      do n = 1,tile%vegn%n_cohorts
         associate(cc => tile%vegn%cohorts(n))
@@ -440,6 +447,10 @@ subroutine vegn_init ( id_lon, id_lat, id_band )
         else
            cc%species = tile%vegn%tag
         endif
+        
+        tile%vegn%ccidMax = tile%vegn%ccidMax + 1	! Adam Wolf
+        cc%ccid = tile%vegn%ccidMax
+        
         end associate
      enddo
   enddo
@@ -514,7 +525,7 @@ subroutine vegn_diag_init ( id_lon, id_lat, id_band, time )
   id_nindivs = register_tiled_diag_field( trim(module_name), 'nindivs', 'density of individuals', 'individuals/m2' )
   id_nlayers = register_tiled_diag_field( trim(module_name), 'nlayers', 'number of canopy layers', 'unitless' )
   id_dbh = register_tiled_diag_field( trim(module_name), 'dbh', 'diameter at breast height', 'm' )
-  id_crownarea = register_tiled_diag_field( trim(module_name), 'crownarea', 'area of individual''s crown', 'm2' )
+  id_crownarea = register_tiled_diag_field( trim(module_name), 'crownarea', 'mean crown area per indiv', 'm2' )
 
   id_temp = register_tiled_diag_field ( trim(module_name), 'temp', 'canopy temperature', 'degK' )
   id_wl = register_tiled_diag_field ( trim(module_name), 'wl', 'canopy liquid water content', 'kg/m2' )
@@ -615,16 +626,16 @@ subroutine vegn_diag_init ( id_lon, id_lat, id_band, time )
    id_cc_bwood = register_tiled_diag_field ( trim(module_name), 'cc_bwood', 'biomass of heartwood', 'kg C/tree')
    id_cc_bseed = register_tiled_diag_field ( trim(module_name), 'cc_bseed', 'biomass of seed', 'kg C/tree')
    id_cc_nsc = register_tiled_diag_field ( trim(module_name), 'cc_nsc', 'biomass of non-structural pool', 'kg C/tree')
-   id_cc_nindivs = register_tiled_diag_field ( trim(module_name), 'cc_nindivs', 'density of individuals per cohort', 'trees per m2')
+   id_cc_nindivs = register_tiled_diag_field ( trim(module_name), 'cc_nindivs', 'density of individuals per cohort', 'indivs/m2')
    id_cc_age = register_tiled_diag_field ( trim(module_name), 'cc_age', 'age of cohort', 'years')
    id_cc_bliving = register_tiled_diag_field ( trim(module_name), 'cc_bliving', 'living biomass', 'kg C/tree')
    id_cc_species = register_tiled_diag_field ( trim(module_name), 'cc_species', 'vegetation species number' )
    id_cc_dbh = register_tiled_diag_field ( trim(module_name), 'cc_dbh', 'cohort dbh' , 'm')
    id_cc_height = register_tiled_diag_field ( trim(module_name), 'cc_height', 'cohort height', 'm' )
-   id_cc_crownarea = register_tiled_diag_field ( trim(module_name), 'cc_crownarea', 'cohort crownarea', 'm2' )
+   id_cc_crownarea = register_tiled_diag_field ( trim(module_name), 'cc_crownarea', 'cohort crownarea per indiv', 'm2/tree' )
    id_cc_layer = register_tiled_diag_field ( trim(module_name), 'cc_layer', 'layer of cohort')
    id_cc_size = register_tiled_diag_field ( trim(module_name), 'cc_size', 'array size')
-   
+   id_cc_id = register_tiled_diag_field ( trim(module_name), 'cc_id', 'cohort ids')
                
 end subroutine
 
@@ -696,6 +707,7 @@ subroutine save_vegn_restart(tile_dim_length,timestamp)
      __NF_ASRT__(nfu_put_var(unit,'nmn_acm',nmn_acm))
   
   call write_cohort_data_i0d_fptr(unit,'species', cohort_species_ptr, 'vegetation species')
+  call write_cohort_data_i0d_fptr(unit,'ccid', cohort_ccid_ptr, 'cohort unique id')
   call write_cohort_data_r0d_fptr(unit,'hite', cohort_height_ptr, 'vegetation height','m')
   call write_cohort_data_r0d_fptr(unit,'bl', cohort_bl_ptr, 'biomass of leaves','kg C/individual')
   call write_cohort_data_r0d_fptr(unit,'blv', cohort_blv_ptr, 'biomass of virtual leaves (labile store)','kg C/individual')
@@ -717,6 +729,8 @@ subroutine save_vegn_restart(tile_dim_length,timestamp)
   call write_cohort_data_r0d_fptr(unit,'leaf_age',cohort_leaf_age_ptr, 'age of leaves since bud burst', 'days')
   call write_cohort_data_r0d_fptr(unit,'cohort_age',cohort_age_ptr, 'age of cohort', 'years')
   call write_cohort_data_r0d_fptr(unit,'npp_prev_day', cohort_npp_previous_day_ptr, 'previous day NPP','kg C/year')
+
+  call write_tile_data_i0d_fptr(unit,'ccidMax',vegn_ccidMax_ptr,'cohort unique id max')
 
   call write_tile_data_i0d_fptr(unit,'landuse',vegn_landuse_ptr,'vegetation land use type')
   call write_tile_data_r0d_fptr(unit,'age',vegn_age_ptr,'vegetation age', 'yr')
@@ -1684,21 +1698,22 @@ subroutine update_vegn_slow( )
 		 call send_tile_data(id_nindivs,    sum(cc(1:N)%nindivs), tile%diag)
 		 call send_tile_data(id_nlayers,    cc(N)%layer,tile%diag)
 
-		 call send_tile_data(id_cc_bl,      cc%bl, 		tile%diag)
-		 call send_tile_data(id_cc_blv,     cc%blv, 	tile%diag)
-		 call send_tile_data(id_cc_br,      cc%br, 		tile%diag)
-		 call send_tile_data(id_cc_bsw,     cc%bsw, 	tile%diag)
-		 call send_tile_data(id_cc_bwood,   cc%bwood, 	tile%diag)
-		 call send_tile_data(id_cc_bseed,   cc%bseed, 	tile%diag)
-		 call send_tile_data(id_cc_nsc,     cc%nsc, 	tile%diag)
-		 call send_tile_data(id_cc_nindivs, cc%nindivs, tile%diag)
-		 call send_tile_data(id_cc_age,     cc%age, 	tile%diag)
-		 call send_tile_data(id_cc_bliving, cc%bliving, tile%diag)
-		 call send_tile_data(id_cc_species, cc%species, tile%diag)
-		 call send_tile_data(id_cc_dbh,     cc%dbh, 	tile%diag)
-		 call send_tile_data(id_cc_height,  cc%height, 	tile%diag)
-		 call send_tile_data(id_cc_crownarea,cc%crownarea, tile%diag)
-		 call send_tile_data(id_cc_layer,   cc%layer, tile%diag)
+		 call send_tile_data(id_cc_bl,      cc(1:N)%bl, 	tile%diag)
+		 call send_tile_data(id_cc_blv,     cc(1:N)%blv, 	tile%diag)
+		 call send_tile_data(id_cc_br,      cc(1:N)%br, 	tile%diag)
+		 call send_tile_data(id_cc_bsw,     cc(1:N)%bsw, 	tile%diag)
+		 call send_tile_data(id_cc_bwood,   cc(1:N)%bwood, 	tile%diag)
+		 call send_tile_data(id_cc_bseed,   cc(1:N)%bseed, 	tile%diag)
+		 call send_tile_data(id_cc_nsc,     cc(1:N)%nsc, 	tile%diag)
+		 call send_tile_data(id_cc_nindivs, cc(1:N)%nindivs, tile%diag)
+		 call send_tile_data(id_cc_age,     cc(1:N)%age, 	tile%diag)
+		 call send_tile_data(id_cc_bliving, cc(1:N)%bliving, tile%diag)
+		 call send_tile_data(id_cc_species, cc(1:N)%species, tile%diag)
+		 call send_tile_data(id_cc_dbh,     cc(1:N)%dbh, 	tile%diag)
+		 call send_tile_data(id_cc_height,  cc(1:N)%height, 	tile%diag)
+		 call send_tile_data(id_cc_crownarea,cc(1:N)%crownarea, tile%diag)
+		 call send_tile_data(id_cc_layer,   cc(1:N)%layer, tile%diag)
+		 call send_tile_data(id_cc_id,      cc(1:N)%ccid, tile%diag)
  	 endif
 
      ! ---- end of diagnostic section
@@ -1805,6 +1820,7 @@ type(vegn_cohort_type),pointer::c;xtype,pointer::p;p=>NULL();if(associated(c))p=
 type(vegn_cohort_type),pointer::c;xtype,pointer::p;p=>NULL();if(associated(c))p=>c%component%x;end subroutine
 
 DEFINE_VEGN_ACCESSOR_0D(integer,landuse)
+DEFINE_VEGN_ACCESSOR_0D(integer,ccidMax)
 DEFINE_VEGN_ACCESSOR_0D(real,age)
 DEFINE_VEGN_ACCESSOR_0D(real,fast_soil_C)
 DEFINE_VEGN_ACCESSOR_0D(real,slow_soil_C)
@@ -1838,6 +1854,7 @@ DEFINE_VEGN_ACCESSOR_1D(real,harv_pool)
 DEFINE_VEGN_ACCESSOR_1D(real,harv_rate)
 
 DEFINE_COHORT_ACCESSOR(integer,species)
+DEFINE_COHORT_ACCESSOR(integer,ccid)
 DEFINE_COHORT_ACCESSOR(real,bl)
 DEFINE_COHORT_ACCESSOR(real,br)
 DEFINE_COHORT_ACCESSOR(real,blv)

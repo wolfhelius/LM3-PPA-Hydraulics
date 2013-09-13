@@ -103,6 +103,9 @@ type :: vegn_cohort_type
 !       of the mortality call time step
   real    :: BM_ys        = 0.0 ! bwood + bsw at the end the previous year, for starvation
 ! mortality calculation.
+                                
+! Adam Wolf
+  integer :: ccid = 0;			! cohort unique identifier
 
 ! ---- uptake-related variables
   real    :: root_length(max_lev) = 0.0 ! individual's root length per unit depth, m of root/m

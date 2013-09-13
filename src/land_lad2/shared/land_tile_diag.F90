@@ -167,7 +167,7 @@ subroutine send_tile_data_0d_int(id, x, buffer)
 
   integer :: year, month, day, hour, minute, second
   character(len=*), parameter :: &
-       diag_format='(i4,"-",i2.2,"-",i2.2,1x,i2.2,":",i2.2,":",i2.2,2x,", ",99i2)'
+       diag_format='(i4,"-",i2.2,"-",i2.2,1x,i2.2,":",i2.2,":",i2.2,2x,", ",99i12)'
 
   call get_date(lnd%time, year, month, day, hour, minute, second)
   write(id,diag_format) year,month,day,hour,minute,second,x
@@ -198,7 +198,7 @@ subroutine send_tile_data_1d_int(id, x, buffer)
 
    integer :: year, month, day, hour, minute, second
   character(len=*), parameter :: &
-       diag_format='(i4,"-",i2.2,"-",i2.2,1x,i2.2,":",i2.2,":",i2.2,2x,", ",99i2)'
+       diag_format='(i4,"-",i2.2,"-",i2.2,1x,i2.2,":",i2.2,":",i2.2,2x,", ",99i12)'
 
   integer :: idx, i
 

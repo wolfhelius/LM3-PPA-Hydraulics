@@ -929,6 +929,10 @@ subroutine vegn_reproduction_ppa (vegn)
     cc%npp_previous_day     = 0.0
     cc%npp_previous_day_tmp = 0.0
     cc%leaf_age     = 0.0
+
+! assign cohort id
+	vegn%ccidMax = vegn%ccidMax + 1	! Adam Wolf
+	cc%ccid = vegn%ccidMax
     
 ! we assume that the newborn cohort is dry; since nindivs of the parent
 ! doesn't change we don't need to do anything with its Wl and Ws to
@@ -969,6 +973,14 @@ subroutine merge_cohorts(c1,c2)
   
   real :: x1, x2 ! normalized relative weights
   real :: HEAT1, HEAT2 ! heat stored in respective canopies
+
+! keep cohort id for larger cohort, defined by total areal biomass
+  real :: size1, size2 ! size of each cohort
+  size1 = c1%nindivs*c1%bliving
+  size2 = c2%nindivs*c2%bliving
+  if (size1 .ge. size2) then
+  	c2%ccid = c1%ccid
+  endif
 
   x1 = c1%nindivs/(c1%nindivs+c2%nindivs)
   x2 = 1-x1
