@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<meta charset="utf-8">
+<body>
+	<script src="http://mbostock.github.com/d3/d3.js?2.7.2"></script>
+	<script type="text/javascript">	
+		function output(inp) {
+			document.body.appendChild(document.createElement('pre')).innerHTML = inp;
+		}		
+		var tileJSON, prettyTile;
+		d3.json("/tile.json", function(json) {
+		  //console.log(json);
+		  tileJSON = json;
+		  prettyTile = JSON.stringify(tileJSON, null, '  ');	
+		  output(prettyTile);
+		});
+		
+		for (var cohort in tileJSON){
+			console.log(cohort, tileJSON[cohort]); 
+		}
+		
+		var myObj = {a: 1, b: 2, c: 3}, myKeys = [];
+ 
+		for (var property in myObj) {
+			myKeys.push(property);
+		}
+		for (var key in myObj){
+			console.log(key, myObj[key]); 
+		}
+		
+	</script>
+</body>		 

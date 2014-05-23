@@ -9,7 +9,7 @@ use utilities_mod,      only: logunit, get_unit, error_mesg, FATAL, NOTE, check_
 use time_manager_mod,   only: time_type, increment_time, time_type_to_real
 use constants_mod,      only: tfreeze, hlv, hlf, dens_h2o, PI
 
-use land_constants_mod, only : NBANDS, BAND_VIS, BAND_NIR
+use land_constants_mod, only : NBANDS, BAND_VIS, BAND_NIR, MPa_per_m, Pa_per_m, mmol_per_kg_h2o
 use soil_tile_mod, only : &
      soil_tile_type, soil_pars_type, soil_prog_type, read_soil_data_namelist, &
      soil_data_radiation, soil_data_thermodynamics, &
@@ -33,6 +33,7 @@ use land_tile_io_mod, only : create_tile_out_file, write_tile_data_r0d_fptr,&
      print_netcdf_error, get_input_restart_name, sync_nc_files
 use nf_utils_mod, only : nfu_def_dim, nfu_put_att, nfu_inq_var
 use vegn_tile_mod, only : vegn_tile_type
+use vegn_data_mod, only: hdb
 use vegn_cohort_mod, only : vegn_cohort_type, &
     cohort_uptake_profile, cohort_root_properties 
 use land_debug_mod, only : is_watch_point, get_current_point
@@ -225,7 +226,7 @@ subroutine soil_init ( id_lon, id_lat, id_band )
 
   integer :: i, code, m
   real :: zeta_s, frac
- character(len=256) :: restart_file_name
+  character(len=256) :: restart_file_name
   logical :: restart_exists
 
   module_is_initialized = .TRUE.
@@ -270,7 +271,8 @@ subroutine soil_init ( id_lon, id_lat, id_band )
      call read_tile_data_r1d_fptr(unit, 'groundwater_T', soil_groundwater_T_ptr)
      if(nfu_inq_var(unit, 'uptake_T')==NF_NOERR) &
           call read_tile_data_r0d_fptr(unit, 'uptake_T', soil_uptake_T_ptr)
-          
+          call read_tile_data_r0d_fptr(unit, 'psi_rootvessel', soil_psi_rootvessel_ptr)
+
      __NF_ASRT__(nf_close(unit))     
   else
      call error_mesg('soil_init',&
@@ -359,7 +361,7 @@ subroutine soil_init ( id_lon, id_lat, id_band )
      call put_to_tiles_r1d_fptr( f_geo,    lnd%tile_map, soil_f_geo_sat_ptr )
      call put_to_tiles_r1d_fptr( refl_dif, lnd%tile_map, soil_refl_sat_dif_ptr )
      deallocate(f_iso, f_vol, f_geo, refl_dif)
-  
+
   ! ---- static diagnostic section
   call send_tile_data_r0d_fptr(id_tau_gw,       lnd%tile_map, soil_tau_groundwater_ptr)
   call send_tile_data_r0d_fptr(id_slope_l,      lnd%tile_map, soil_hillslope_length_ptr)
@@ -476,6 +478,7 @@ subroutine save_soil_restart (tile_dim_length, timestamp)
   call write_tile_data_r1d_fptr(unit,'groundwater'  ,soil_groundwater_ptr  ,'zfull')
   call write_tile_data_r1d_fptr(unit,'groundwater_T',soil_groundwater_T_ptr ,'zfull')
   call write_tile_data_r0d_fptr(unit,'uptake_T',     soil_uptake_T_ptr, 'temperature of transpiring water', 'degrees_K')
+  call write_tile_data_r0d_fptr(unit,'psi_rootvessel',     soil_psi_rootvessel_ptr, 'water potential inside roots', 'm')
   
   ! close file
   __NF_ASRT__(nf_close(unit))
@@ -545,7 +548,7 @@ subroutine soil_data_beta ( soil, vegn, soil_beta, soil_water_supply, &
   VRL(:) = 0.0
   do k = 1, vegn%n_cohorts
      cc=>vegn%cohorts(k)
-     call cohort_root_properties (cc, dz(1:num_l), cc%root_length(1:num_l), cc%K_r, cc%r_r)
+     call cohort_root_properties (cc, dz(1:num_l), cc%root_length(1:num_l), cc%Kra, cc%r_r)
      VRL(:) = VRL(:)+cc%root_length(1:num_l)*cc%nindivs
   enddo
   
@@ -587,12 +590,12 @@ subroutine soil_data_beta ( soil, vegn, soil_beta, soil_water_supply, &
         soil_uptake_T(k) = sum(cc%uptake_frac(1:num_l)*soil%prog(1:num_l)%T)
      case(UPTAKE_DARCY2D)
         call darcy2d_uptake ( soil, psi_wilt, vegn%root_distance, cc%root_length, &
-             cc%K_r, cc%r_r, uptake_oneway, uptake_from_sat, u, du )
+             cc%Kra, cc%r_r, uptake_oneway, uptake_from_sat, u, du )
         soil_water_supply(k) = max(0.0,sum(u))
         soil_uptake_T(k) = soil%uptake_T
      case(UPTAKE_DARCY2D_LIN)
         call darcy2d_uptake_lin ( soil, psi_wilt, vegn%root_distance, cc%root_length, &
-             cc%K_r, cc%r_r, uptake_oneway, uptake_from_sat, u, du)
+             cc%Kra, cc%r_r, uptake_oneway, uptake_from_sat, u, du)
         soil_water_supply(k) = max(0.0,sum(u))
         soil_uptake_T(k) = soil%uptake_T
      end select
@@ -657,6 +660,7 @@ subroutine soil_step_1 ( soil, vegn, diag, &
   call soil_data_hydraulics ( soil, vlc, vsc, &
        soil%psi, DThDP, hyd_cond, DKDP, DPsi_min, DPsi_max, tau_gw, &
        psi_for_rh, soil_w_fc )
+  
   soil_rh = exp(psi_for_rh*g_RT)
   soil_rh_psi = g_RT*soil_rh
   call soil_data_thermodynamics ( soil, vlc, vsc, soil_E_max, thermal_cond )
@@ -745,7 +749,7 @@ end subroutine soil_step_1
                            soil_levap, soil_fevap, soil_melt, &
                            soil_lrunf, soil_hlrunf, soil_Ttop, soil_Ctop )
   type(soil_tile_type), intent(inout) :: soil
-  type(vegn_tile_type), intent(in)    :: vegn
+  type(vegn_tile_type), intent(inout)    :: vegn
   type(diag_buff_type), intent(inout) :: diag
   real, intent(in) :: &
      soil_subl     !
@@ -799,7 +803,6 @@ end subroutine soil_step_1
   type(vegn_cohort_type), pointer :: cc
   jj = 1.
   flag = .false.
-  
   if(is_watch_point()) then
      write(*,*) ' ##### soil_step_2 checkpoint 1 #####'
      write(*,*) 'mask    ', .true.
@@ -883,13 +886,22 @@ end subroutine soil_step_1
         ! transpiration by the vegetation
         if ( uptake_option==UPTAKE_DARCY2D ) then
            call darcy2d_uptake_solver     (soil, transp1, vegn%root_distance, &
-                cc%root_length, cc%K_r, cc%r_r, &
+                cc%root_length, cc%Kra, cc%r_r, &
                 uptake_oneway, uptake_from_sat, uptake1, n_iter)
         else
            call darcy2d_uptake_solver_lin (soil, transp1, vegn%root_distance, &
-                cc%root_length, cc%K_r, cc%r_r, &
+                cc%root_length, cc%Kra, cc%r_r, &
                 uptake_oneway, uptake_from_sat, uptake1, n_iter )
         endif
+        ! Solution provides psi inside the skin, given uptake and Kra for each level
+        ! This calculates effective psi outside the skin (root-soil interface) 
+        !   across all levels using single Kri for use in cavitation calculations.
+
+        cc%psi_rs = soil%psi_rootvessel + sum(uptake1)/(cc%Kri) ! Wolf
+        if (sum(uptake1) .le. 0.) cc%psi_rs = soil%psi_rootvessel
+        if (cc%psi_rs .ge. soil%pars%psi_sat_ref) cc%psi_rs = soil%pars%psi_sat_ref
+        if (cc%ccid .eq. 1 .and. hdb) write(*,'(A,F10.2,A,F10.2,A,F10.2,A,F10.2,A,E10.2)') ' psi_soil(Pa): ', soil%psi(10)*Pa_per_m, ' psi_rs(Pa): ', cc%psi_rs*Pa_per_m, 'psi_rv(Pa): ', soil%psi_rootvessel*Pa_per_m, ' uptake(mmol/indiv): ', sum(uptake1)*mmol_per_kg_h2o, ' Kri(kg/MPa): ', cc%Kri/MPa_per_m 
+
      end select
      if (is_watch_point()) then
         __DEBUG3__(transp1,sum(uptake1(1:num_l)),n_iter)
@@ -1657,6 +1669,7 @@ type(land_tile_type),pointer::t;xtype,pointer::p(:);p=>NULL();if(associated(t))t
 
 DEFINE_SOIL_ACCESSOR_1D(real,w_fc)
 DEFINE_SOIL_ACCESSOR_0D(real,uptake_T)
+DEFINE_SOIL_ACCESSOR_0D(real,psi_rootvessel)
 DEFINE_SOIL_ACCESSOR_0D(integer,tag)
 
 DEFINE_SOIL_COMPONENT_ACCESSOR_0D(real,pars,tau_groundwater)

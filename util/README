@@ -1,0 +1,5 @@
+README
+
+ls /path/to/restart1.nc /path/to/restart2/nc | ardiff
+
+unpacks them in a temporary dir, checks diffs

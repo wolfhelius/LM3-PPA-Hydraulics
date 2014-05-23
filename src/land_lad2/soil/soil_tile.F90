@@ -149,6 +149,7 @@ type :: soil_tile_type
    ! added to avoid recalculation of soil hydraulics in case of Darcy uptake
    real          :: uptake_T ! update temperature from previous time step
    real, pointer :: psi(:) ! soil water potential
+   real :: psi_rootvessel ! psi inside the root system, at z=0
 end type soil_tile_type
 
 ! ==== module data ===========================================================

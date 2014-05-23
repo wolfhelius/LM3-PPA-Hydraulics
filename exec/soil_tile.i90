@@ -253,6 +253,7 @@ type :: soil_tile_type
 ! added to avoid recalculation of soil hydraulics in case of Darcy uptake
    real          :: uptake_T ! update temperature from previous time step
    real, pointer :: psi(:) ! soil water potential
+   real :: psi_rootvessel ! psi inside the root system, at z=0
 end type soil_tile_type
 
 ! ==== module data ===========================================================
@@ -488,9 +489,9 @@ subroutine read_soil_data_namelist(soil_num_l, soil_dz, soil_single_geo, &
 
   if (use_geohydrology.and..not.use_single_geo) then
 
-      call print_netcdf_error((nf_open('INPUT/geohydrology_table.nc', NF_NOWRITE, ncid )),"soil_tile.F90",387)
+      call print_netcdf_error((nf_open('INPUT/geohydrology_table.nc', NF_NOWRITE, ncid )),"soil_tile.F90",388)
 
-      call print_netcdf_error((nfu_inq_var(ncid, 'gw_flux_norm', id=varid, ndims=ndims, dimlens=dimlens)),"soil_tile.F90",389)
+      call print_netcdf_error((nfu_inq_var(ncid, 'gw_flux_norm', id=varid, ndims=ndims, dimlens=dimlens)),"soil_tile.F90",390)
       if(ndims /= 2) then
         call error_mesg('soil_tile_mod', &
         'The field gw_flux_norm in the file geohydrology_table.nc must be 2 dimensional',FATAL)
@@ -500,9 +501,9 @@ subroutine read_soil_data_namelist(soil_num_l, soil_dz, soil_single_geo, &
         call error_mesg('soil_tile_mod', &
         'The field gw_flux_norm in the file geohydrology_table.nc must be dimensioned '//string,FATAL)
       endif
-      call print_netcdf_error((nf_get_var_double(ncid,varid,gw_flux_table)),"soil_tile.F90",399)
+      call print_netcdf_error((nf_get_var_double(ncid,varid,gw_flux_table)),"soil_tile.F90",400)
 
-      call print_netcdf_error((nfu_inq_var(ncid, 'gw_area_norm', id=varid, ndims=ndims, dimlens=dimlens)),"soil_tile.F90",401)
+      call print_netcdf_error((nfu_inq_var(ncid, 'gw_area_norm', id=varid, ndims=ndims, dimlens=dimlens)),"soil_tile.F90",402)
       if(ndims /= 2) then
         call error_mesg('soil_tile_mod', &
        'The field gw_area_norm in the file geohydrology_table.nc must be 2 dimensional',FATAL)
@@ -512,7 +513,7 @@ subroutine read_soil_data_namelist(soil_num_l, soil_dz, soil_single_geo, &
         call error_mesg('soil_tile_mod', &
         'The field gw_area_norm in the file geohydrology_table.nc must be dimensioned '//string,FATAL)
       endif
-      call print_netcdf_error((nf_get_var_double(ncid,varid,gw_area_table)),"soil_tile.F90",411)
+      call print_netcdf_error((nf_get_var_double(ncid,varid,gw_area_table)),"soil_tile.F90",412)
 
   endif
 

@@ -4,9 +4,9 @@
 # mkmf -t template.ifc -c"-Duse_libMPI -Duse_netCDF" path_names /usr/local/include
 CPPFLAGS =
 FFLAGS_BASE  = -fpp -Wp,-w -fno-alias -stack_temps -safe_cray_ptr -ftz -i_dynamic -assume byterecl -i4 -r8 -g -heap-arrays
-FFLAGS_REPRO = -fltconsistency -pc64 -check bounds -check pointer -check uninit -traceback -fpe0
-#FFLAGS_REPRO = -fltconsistency -check bounds -check pointer -check uninit -traceback -fpe0
+FFLAGS_REPRO = -fltconsistency -check bounds -check pointer -check uninit -traceback -fpe0
 FFLAGS = $(FFLAGS_BASE) $(FFLAGS_REPRO) -O2 -nowarn
+#FFLAGS = $(FFLAGS_BASE) $(FFLAGS_REPRO)
 FC = ifort
 CC = cc
 CFLAGS_BASE = -g -D__IFC

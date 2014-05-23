@@ -239,7 +239,6 @@ subroutine land_model_init &
 
   ! [1] print out version number
   ! call write_version_number (version, tagname)
-  write (logunit,'(/,80("="),/(a))') trim(version), trim(tagname)
 
   ! [ ] initialize land debug output
   call land_debug_init()
@@ -751,6 +750,8 @@ subroutine update_land_model_fast ( cplr2land, land2cplr )
   ! variables for data override
   real, allocatable :: phot_co2_data(:,:)  ! buffer for data
   logical           :: phot_co2_overridden = .false. ! flag indicating successful override
+
+  !write(*,*) 'enter update_land_model_fast'
   
   ! to avoid output of static vegetation after the transitions worked and
   ! changed the tiling structure, static vegetation output is done here.
@@ -804,7 +805,6 @@ subroutine update_land_model_fast ( cplr2land, land2cplr )
         else
            n_cohorts = 1
         endif
-   
         call update_land_model_fast_0d(tile, i,j,k, n_cohorts, land2cplr, &
            cplr2land%lprec(i,j,k),  cplr2land%fprec(i,j,k), cplr2land%tprec(i,j,k), &
            cplr2land%t_flux(i,j,k), cplr2land%dhdt(i,j,k), &
@@ -964,6 +964,8 @@ subroutine update_land_model_fast ( cplr2land, land2cplr )
   ! deallocate override buffer
   deallocate(phot_co2_data)
 
+  !write(*,*) 'exit update_land_model_fast'
+
 end subroutine update_land_model_fast
 
 
@@ -1099,6 +1101,9 @@ subroutine update_land_model_fast_0d ( tile, ix,iy,itile, N, land2cplr, &
   real :: lmass1, fmass1, heat1, cmass1
   character(64) :: tag
 
+  !write(*,*) 'enter update_land_model_fast_0d'
+
+
   if(is_watch_point()) then
      call print_date(lnd%time, '#### update_land_model_fast_0d begins:')
   endif
@@ -1107,7 +1112,6 @@ subroutine update_land_model_fast_0d ( tile, ix,iy,itile, N, land2cplr, &
   call get_tile_water(tile,lmass0,fmass0)
   cmass0 = land_tile_carbon(tile)
   ! - end of conservation check, part 1
-
   soil_uptake_T(:) = tfreeze ! just to avoid using un-initialized values
   if (associated(tile%glac)) then
      call glac_step_1 ( tile%glac, &
@@ -1599,7 +1603,6 @@ subroutine update_land_model_fast_0d ( tile, ix,iy,itile, N, land2cplr, &
      if (.not.redo_leaf_water) exit ! from loop
 
   enddo  ! leaf water iterations
-
    
   call cana_step_2 ( tile%cana, delta_Tc, delta_qc )
 
@@ -1883,6 +1886,8 @@ subroutine update_land_model_fast_0d ( tile, ix,iy,itile, N, land2cplr, &
   call send_tile_data(id_swup_dir, ISa_dn_dir*tile%land_refl_dir,     tile%diag)
   call send_tile_data(id_swup_dif, ISa_dn_dif*tile%land_refl_dif,     tile%diag)
   call send_tile_data(id_lwdn,     ILa_dn,                            tile%diag)
+
+  !write(*,*) 'exit update_land_model_fast_0d'
 
 end subroutine update_land_model_fast_0d
 

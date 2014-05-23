@@ -201,6 +201,7 @@ subroutine vegn_carbon_int_lm3(vegn, soilt, theta, diag)
      resr = resr + cc%resr*cc%nindivs ; resg = resg + cc%resg*cc%nindivs
 ! update cohort age
      cc%age = cc%age + dt_fast_yr
+
   enddo
   if(is_watch_point()) then
      write(*,*)'#### vegn_carbon_int_lm3 output ####'
@@ -384,7 +385,7 @@ subroutine vegn_carbon_int_ppa (vegn, tsoil, theta, diag)
 ! update soil carbon
   call Dsdt(vegn, diag, tsoil, theta)
 
-! NEP is equal to NNP minus soil respiration
+! NEP is equal to NPP minus soil respiration
   vegn%nep = vegn%npp - vegn%rh
 
   call update_soil_pools(vegn)
@@ -482,14 +483,19 @@ subroutine biomass_allocation_ppa(cc)
   real :: deltaDBH ! tendency of breast height diameter, m
   real :: deltaCA ! tendency of crown area, m2/individual
   real :: deltaHeight ! tendency of vegetation height
+  real :: deltaCSAsw ! tendency of sapwood area
   real :: sw2nsc ! conversion of sapwood to non-structural carbon
   real :: b
+  real :: tao_sapwood
+
+  logical:: hydraulics_repair = .FALSE. 
 
   associate (sp => spdata(cc%species)) ! F2003
 
 ! calculate max biomasses of canopy and fine roots
   cc%bl_max = sp%LMA   * sp%LAImax        * cc%crownarea
   cc%br_max = sp%phiRL * sp%LAImax/sp%SRA * cc%crownarea 
+!cc%br_max = cc%bl_max / sp%LMA * sp%phiRL / sp%SRA ! equivalent.  LMA and SRA have inverse units
   if (cc%layer > 1 .and. cc%firstlayer == 0) then
 ! reduce max bl and br if the cohort is not in the upper layer and never has been
 ! NOTE: comparing both layer and firstlayer seem redundant
@@ -538,9 +544,25 @@ subroutine biomass_allocation_ppa(cc)
      DBHwd    = 2*sqrt(CSAwd/PI)
      BSWmax   = sp%alphaBM * (cc%DBH**sp%thetaBM - DBHwd**sp%thetaBM)
    
+! Update Kxa, stem conductance if we are tracking past damage
+   	 if (hydraulics_repair .eq. .false.) then
+   		deltaCSAsw = CSAsw - (sp%alphaCSASW * (cc%DBH - deltaDBH)**sp%thetaCSASW)
+   		cc%Kxa = (cc%Kxa*CSAsw + sp%Kxam*deltaCSAsw)/(CSAsw + deltaCSAsw)
+   	 endif
+   
      deltaBwood = max(cc%bsw - BSWmax, 0.0)
      cc%bwood   = cc%bwood + deltaBwood
      cc%bsw     = cc%bsw   - deltaBwood
+
+! Gets radial depth of sapwood, and equates this depth to an effective age
+    tao_sapwood = (cc%dbh/2 - DBHwd/2) / (cc%dbh/2)/(cc%age) ! time
+    
+! compute running average of stress given time const of tissue
+!cc%astress_r = (1. - sp%alpha(CMPT_ROOT) * dt_fast_yr)*cc%astress_r + sp%alpha(CMPT_ROOT)*dt_fast_yr*cc%istress_r
+!cc%astress_x = (1. -    (1./tao_sapwood) * dt_fast_yr)*cc%astress_x +    (1./tao_sapwood)*dt_fast_yr*cc%istress_x
+!cc%astress_l = (1. - sp%alpha(CMPT_LEAF) * dt_fast_yr)*cc%astress_l + sp%alpha(CMPT_LEAF)*dt_fast_yr*cc%istress_l
+
+
      if(is_watch_point()) then
         call dpri("cc%bl",cc%bl);call dpri("cc%br",cc%br);call dpri("cc%bl_max",cc%bl_max);call dpri("cc%br_max",cc%br_max);write(*,*)
         call dpri("cc%carbon_gain",cc%carbon_gain);call dpri("G_LFR",G_LFR);call dpri("deltaBL",deltaBL);call dpri("deltaBR",deltaBR);call dpri("deltaBSW",deltaBSW);write(*,*)
@@ -551,8 +573,8 @@ subroutine biomass_allocation_ppa(cc)
   cc%carbon_gain = 0
   cc%carbon_loss = 0
   cc%bwood_gain  = 0
-  
-  end associate ! F2003
+
+  end associate 
 end subroutine biomass_allocation_ppa
 
 ! ============================================================================
@@ -1079,6 +1101,7 @@ subroutine relayer_cohorts (vegn)
   real    :: frac ! fraction of the layer covered so far by the canopies
   type(vegn_cohort_type), pointer :: cc(:),new(:)
   real    :: nindivs
+  logical :: assignNewCCID
   
 ! rank cohorts in descending order by height. For now, assume that they are
 ! in order
@@ -1092,13 +1115,23 @@ subroutine relayer_cohorts (vegn)
   N1 = vegn%n_cohorts + int(sum(cc(1:N0)%nindivs*cc(1:N0)%crownarea))
   allocate(new(N1))
 
+
 ! copy cohort information to the new cohorts, splitting the old cohorts that
 ! stride the layer boundaries
-  i = 1 ; k = 1 ; L = 1 ; frac = 0.0 ; nindivs = cc(idx(k))%nindivs
+  i = 1 ; k = 1 ; L = 1 ; frac = 0.0 ; 
+  assignNewCCID = .FALSE.
+  nindivs = cc(idx(k))%nindivs
   do 
      new(i)         = cc(idx(k))
      new(i)%nindivs = min(nindivs,(1-frac)/cc(idx(k))%crownarea)
      new(i)%layer   = L
+     
+     if (assignNewCCID) then
+! assign cohort id
+		vegn%ccidMax = vegn%ccidMax + 1	! Adam Wolf
+		new(i)%ccid = vegn%ccidMax     
+     endif
+     
      if (L==1) new(i)%firstlayer = 1
      frac = frac+new(i)%nindivs*new(i)%crownarea
      nindivs = nindivs - new(i)%nindivs
@@ -1106,7 +1139,11 @@ subroutine relayer_cohorts (vegn)
      if (abs(nindivs*cc(idx(k))%crownarea)<tolerance) then
        new(i)%nindivs = new(i)%nindivs + nindivs ! allocate the remainder of individuals to the last cohort
        if (k==N0) exit ! end of loop
-       k = k+1 ; nindivs = cc(idx(k))%nindivs  ! go to the next input cohort
+       k = k+1 ; 
+       nindivs = cc(idx(k))%nindivs  ! go to the next input cohort
+       assignNewCCID = .FALSE.
+     else
+       assignNewCCID = .TRUE.
      endif
      
      if (abs(1-frac)<tolerance) then

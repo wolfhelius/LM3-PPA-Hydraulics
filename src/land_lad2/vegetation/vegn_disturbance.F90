@@ -280,14 +280,20 @@ subroutine vegn_nat_mortality_ppa (vegn, deltat)
      else
         deathrate = sp%mortrate_d_c
      endif
-     ! Mortality due to starvation
+     
+     ! Carbon mortality due to starvation
      if (cc%bwood+cc%bsw < cc%BM_ys-0.5*cc%bl_max .or. cc%nsc<0.01*cc%bl_max .or. cc%bsw<0) then
          deathrate = mortrate_s
      endif
      cc%BM_ys = cc%bwood+cc%bsw
-
      deadtrees = cc%nindivs * (1.0-exp(-deathrate*deltat/seconds_per_year)) ! individuals / m2
-     ! kill the entire cohort if the the spacial density of individuals is too low
+
+     ! Hydraulic mortality due to xylem cavitation. 
+     ! Threshold set to PLC88
+     ! This threshold could be a namelist parameter
+     if (cc%Kxa .le. sp%Kxam*0.12) deadtrees=cc%nindivs
+
+     ! kill the entire cohort if the the spatial density of individuals is too low
      if (cc%nindivs-deadtrees < min_nindivs) deadtrees=cc%nindivs
      ! recalculate amount of water on canopy: assume that the dead tree are dry,
      ! so all water remains on the survivors

@@ -50,10 +50,13 @@ for (( i=1; i<=10; i++ )) ; do
    pushd RESTART
    	  if [ $i -eq 1 ] 
    	  then
-	   	  cp $workdir/DIAGNOSTICS/vegn* $workdir/WOLF/.
-	  else
-	   	  cp $workdir/DIAGNOSTICS/vegn* $workdir/WOLF/tmp/.
-	   	  python $pydir/append_files.py $wolfdir 'vegn'
+        cp $workdir/DIAGNOSTICS/vegn* $workdir/WOLF/.
+        cp $workdir/DIAGNOSTICS/soil_soil_psi $workdir/WOLF/.
+    else
+        cp $workdir/DIAGNOSTICS/vegn* $workdir/WOLF/tmp/.
+        cp $workdir/DIAGNOSTICS/soil_soil_psi $workdir/WOLF/tmp/.
+        python $pydir/append_files.py $wolfdir 'vegn'
+        python $pydir/append_files.py $wolfdir 'soil'
 	  fi
       tar cvf ../$((1949+i*1))0101.tar *
    popd

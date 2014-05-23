@@ -31,6 +31,7 @@
      start_loop = 1949,1,1,0,0,0,
      end_loop   = 2009,1,1,0,0,0,
      limit_swdn_by_TOA_flux = .true. /
+ 
  &atmos_prescr_nml
          read_forcing = .true.,
          gust_to_use  = 'computed',
@@ -96,7 +97,7 @@
        float_ice_to_top = .true.  /
 
  &land_debug_nml
-       watch_point = 0,0,0,1 /
+       watch_point = 1,1,1,0 /
 
  &land_model_nml
        tau_snow_T_adj = 604800.
@@ -146,11 +147,14 @@
        freeze_factor    = 2.0
        comp             = 1e-4
        num_l            = 20
+       ! soil types       C    M    F   CM   CF   MF  CMF Peat MCM
+       soil_fraction    = 0.,  1.,  0.,  0.,  0.,  0.,  0.,  0., 0.
        dz = 0.020, 0.040, 0.040, 0.050, 0.05, 0.100, 0.10, 0.200, 0.200, 0.2, 
             0.40,  0.40,  0.40,  0.4,   0.4,   1.0,   1.0,  1.0,  1.5,   2.5 /
 
  &soil_nml
-       init_w        = 500.
+       ! init_w        = 500.
+       init_w        = 250.
        uptake_to_use = 'darcy2d-linearized'
        uptake_oneway = .true.
        active_layer_drainage_acceleration = 100.  /
@@ -198,7 +202,7 @@
        dat_snow_crit = 0.0167, 0.0167, 0.0333, 0.2, 0.2 
        t_transp_min = 268.
        root_perm = 14*5e-7
-       alpha(1,3) = 4 
+       !alpha(1,3) = 4 
        leaf_age_tau(2) = 150
        smoke_fraction = 0.9, 0.9, 0.6, 0.6, 0.6
        tg_c3_thresh = 1
@@ -207,14 +211,14 @@
 
        do_ppa = .TRUE.
        ! turn off leaf overturning for deciduous species
-       alpha(0:3,3) = 4*0.0
+       !alpha(0:3,3) = 4*0.0
        ! species      0         1         2         3         4
        alphaHT      = 20,       20,       36.01,    36.41,    36.41
        thetaHT      = 0.5,      0.5,      0.5,      0.5,      0.5
        alphaCA      = 30,       30,       150,      175,      170
        thetaCA      = 1.5,      1.5,      1.5,      1.5,      1.5
        alphaCSASW   = 0.2,      0.2,      0.14,     0.14,     0.14
-       thetaCSASW   = 1.5,      1.5,      1.5,      1.5,      0.14
+       thetaCSASW   = 1.5,      1.5,      1.5,      1.5,      1.5
        laimax       = 3.0,      3.0,      3.1,      3.8,      3.5
        LMA          = 0.04,     0.04,     0.039,    0.032,    0.0324
        phiRL        = 2.69,     2.69,     4.2,      4.5,      4.5
@@ -226,6 +230,25 @@
        rho_wood     = 250,      250,      175,      260,      245
        taperfactor  = 1.2,      1.2,      0.64,     0.63,     0.65
        srl          = 112e3,    150e3     43.9e3,   43.9e3,   43.9e3 ! to get desired SRA
+       
+       do_hydraulics = .false.
+       do_virtual_hydraulics = .true.
+       hdb = .false.
+       ! species      0         1         2         3         4
+       Kram         = 6.0e-5,     6e-5,     6e-5,     6e-5,     6e-5       ! in MPa
+       Kxam         = 3.0,        3.0,        3.0,        3.0,        3.0  ! kg / m2 sap / s / (MPa/m height) = kg / m / s / MPa
+       Klam         = 2.0e-4,   2.0e-4,   2.0e-4,   2.0e-4,   2.0e-4       ! kg / m2 leaf / s 
+       ! Approx psi-50 values for each tissue. Units MPa
+       dr            = -2.0,    -2.0,       -2.0,     -2.0,     -2.0
+       dx            = -2.0,    -2.0,       -2.0,     -2.0,     -2.0
+       dl            = -0.8,    -0.8,       -0.8,     -0.8,     -0.8
+       ! Exponents on weibull
+       cr            = 1.5,      1.5,        1.5,      1.5,     1.5
+       cx            = 1.5,      1.5,        1.5,      1.5,     1.5
+       cl            = 0.5,      0.5,        0.5,      0.5,     0.5
+       ! turgor loss point. This should have its lower bound at psi_x(88)
+       psi_tlp       = -2.5,    -2.5,       -2.5,     -2.5,    -2.5
+       
  / 
 
 
@@ -233,7 +256,7 @@
        init_Tv = 288.0
        init_n_cohorts = 3
        init_cohort_species = 2,      3,      4
-       init_cohort_nindivs = 1e-7,   0.075,  1e-8
+       init_cohort_nindivs = 0.075,   0.075,  0.075
        init_cohort_bsw     = 0.5,    0.5,    0.5
        init_cohort_bwood   = 0.2,    0.2,    0.2
        init_cohort_nsc     = 0.3,    0.3,    0.3

@@ -2,8 +2,8 @@ module vegn_cohort_mod
 
 use constants_mod, only: PI
 
-use land_constants_mod, only: NBANDS, mol_h2o, mol_air
-use vegn_data_mod, only : spdata, &
+use land_constants_mod, only: NBANDS, mol_h2o, mol_air, MPa_per_m
+use vegn_data_mod, only : spdata, spec_data_type, &
    use_mcm_masking, use_bucket, critical_root_density, &
    tg_c4_thresh, tg_c3_thresh, l_fract, fsc_liv, &
    phen_ev1, phen_ev2, cmc_eps
@@ -11,7 +11,7 @@ use vegn_data_mod, only : PT_C3, PT_C4, CMPT_ROOT, CMPT_LEAF, &
    SP_C4GRASS, SP_C3GRASS, SP_TEMPDEC, SP_TROPICAL, SP_EVERGR, &
    LEAF_OFF, LU_CROP, PHEN_EVERGREEN, PHEN_DECIDIOUS, &
    do_ppa
-use soil_tile_mod, only : max_lev
+use soil_tile_mod, only : soil_tile_type, max_lev
 
 implicit none
 private
@@ -34,6 +34,7 @@ public :: height_from_biomass    ! given total biomass, calculated tree height
 public :: update_bio_living_fraction
 public :: update_biomass_pools
 public :: init_cohort_allometry_ppa
+public :: init_cohort_hydraulics
 ! ==== end of public interfaces ==============================================
 
 ! ==== module constants ======================================================
@@ -66,6 +67,8 @@ type :: vegn_cohort_type
   real    :: bwood   = 0.0 ! biomass of heartwood, kg C/individual
   real    :: bseed   = 0.0 ! biomass put aside for future progeny, kg C/individual
   real    :: nsc     = 0.0 ! non-structural carbon, kg C/individual
+
+  real    :: bl_wilt = 0.0 ! biomass of leaves in wilted pool, kg C/individual
 
   real    :: bliving = 0.0 ! leaves, fine roots, and sapwood biomass
   integer :: status  = 0   ! growth status of plant
@@ -104,11 +107,22 @@ type :: vegn_cohort_type
                                 ! mortality calculation.
                                 
 ! Adam Wolf
-  integer :: ccid = 0;			! cohort unique identifier                                
+  integer :: ccid = 0;			! cohort unique identifier
+  real    :: psi_rs       = 0.0 ! psi at root-soil interface (solution to to darcy2d_solver)
+  real    :: psi_r        = 0.0 ! psi of root (root-stem interface)
+  real    :: psi_x        = 0.0 ! psi of xylem (stem-leaf interface)
+  real    :: psi_l        = 0.0 ! psi of leaf (leaf-substomatal cavity interface)
+  !real    :: Kra          = 0.0 ! conductivity of root system kg/m2 root /s /m head
+  real    :: Kxa          = 0.0 ! conductivity of stem kg/m2 swa /s /(m head/m m height)
+  real    :: Kla          = 0.0 ! conductivity of leaf kg/m2 leaf /s /m head
+  real    :: Kri          = 0.0 ! conductivity of root system kg/indiv /s /m head
+  real    :: Kxi          = 0.0 ! conductivity of stem kg/indiv /s /(m head/m m height)
+  real    :: Kli          = 0.0 ! conductivity of leaf kg/indiv /s /m head
+  real    :: gsi           = 0.0 ! stomatal cond per indiv kg/indiv/s 
 
 ! ---- uptake-related variables
   real    :: root_length(max_lev) = 0.0 ! individual's root length per unit depth, m of root/m
-  real    :: K_r = 0.0 ! root membrane permeability per unit area, kg/(m3 s)
+  real    :: Kra = 0.0 ! root membrane permeability per unit area, kg/m2 root /s /m head
   real    :: r_r = 0.0 ! radius of fine roots, m
   real    :: uptake_frac(max_lev) = 0.0 ! normalized vertical distribution of uptake
 
@@ -142,9 +156,9 @@ type :: vegn_cohort_type
 
   ! lena added this for storing previous size stomatal opening and lwnet 
   ! for computing canopy air T and q at the next step
-  
   real :: gs = 0.0
   real :: gb = 0.0
+
 !moved to prog%Wl  real :: cmc;
 !moved to prog%Tv  real :: tleaf ! temperature of leaves, degK
 
@@ -283,12 +297,12 @@ end subroutine vegn_data_cover
 
 ! ============================================================================
 ! returns properties of the fine roots
-subroutine cohort_root_properties(cohort, dz, vrl, K_r, r_r)
+subroutine cohort_root_properties(cohort, dz, vrl, Kra, r_r)
   type(vegn_cohort_type), intent(in)  :: cohort
   real, intent(in)  :: dz(:)
   real, intent(out) :: &
        vrl(:), & ! volumetric fine root length, m/m3
-       K_r,    & ! root membrane permeability per unit area, kg/(m3 s)
+       Kra,    & ! root membrane permeability per unit area, kg/(m3 s) 
        r_r       ! radius of fine roots, m
 
   integer :: sp, l
@@ -311,7 +325,8 @@ subroutine cohort_root_properties(cohort, dz, vrl, K_r, r_r)
      z = z + dz(l)
   enddo
 
-  K_r = spdata(sp)%root_perm
+  Kra = cohort%Kra
+  !Kra = spdata(sp)%root_perm
   r_r = spdata(sp)%root_r
 
 end subroutine 
@@ -527,12 +542,12 @@ subroutine update_biomass_pools(c)
      c%bl  = c%Pl*c%bliving;
      c%br  = c%Pr*c%bliving;
   endif
-end subroutine 
+end subroutine update_biomass_pools
 
 
 ! ============================================================================
 ! calculate tree height, DBH, height, and crown area by bwood and denstiy 
-! The allometry equations are from Ray Dybzinski et al. 2011 and Forrior et al. in review
+! The allometry equations are from Ray Dybzinski et al. 2011 and Farrior et al. in review
 !         HT = alphaHT * DBH ** (gamma-1)   ! DBH --> Height
 !         CA = alphaCA * DBH ** gamma       ! DBH --> Crown Area
 !         BM = alphaBM * DBH ** (gamma + 1) ! DBH --> tree biomass
@@ -544,7 +559,6 @@ subroutine init_cohort_allometry_ppa(cc)
   btot = max(0.0001,cc%bwood+cc%bsw)
   associate(sp=>spdata(cc%species))
      cc%DBH        = (btot / sp%alphaBM) ** ( 1.0/sp%thetaBM )
-!    cc%treeBM     = sp%alphaBM * cc%dbh ** sp%thetaBM
      cc%height     = sp%alphaHT * cc%dbh ** sp%thetaHT
      cc%crownarea  = sp%alphaCA * cc%dbh ** sp%thetaCA
 
@@ -555,6 +569,40 @@ subroutine init_cohort_allometry_ppa(cc)
      cc%bl_max = sp%LMA   * sp%LAImax        * cc%crownarea
      cc%br_max = sp%phiRL * sp%LAImax/sp%SRA * cc%crownarea 
   end associate
-end subroutine 
+end subroutine init_cohort_allometry_ppa
+
+
+! adam wolf
+! Stored in cc as K per tissue area. 
+!  spdata stores pressure units in m
+!  Potential in units m to be consistent with Sergei's (conversion at namelist read)
+subroutine init_cohort_hydraulics(cc, soil)	
+	type(vegn_cohort_type), intent(inout) :: cc
+  type(soil_tile_type), intent(in) :: soil    
+  real:: rootarea, leafarea, stemarea
+
+  associate(sp=>spdata(cc%species))
+  rootarea = cc%br * sp%srl * 2*PI * sp%root_r  ! (kg/indiv)(m/kg)(m2/m)
+  stemarea = sp%alphaCSASW * cc%DBH**sp%thetaCSASW
+  leafarea = cc%bl / sp%LMA
+	
+  cc%Kra = sp%Kram
+	cc%Kxa = sp%Kxam
+	cc%Kla = sp%Klam
+		
+  cc%Kri = cc%Kra * rootarea
+  cc%Kxi = cc%Kxa * stemarea / cc%height
+  cc%Kli = cc%Kla * leafarea
+
+  cc%psi_rs = soil%pars%psi_sat_ref
+  cc%psi_r  = soil%pars%psi_sat_ref
+  cc%psi_x  = soil%pars%psi_sat_ref
+  cc%psi_l  = soil%pars%psi_sat_ref
+
+  ! pressure units carried as m
+  ! write(*,*) 'psi init: ', cc%psi_rs*MPa_per_m, cc%psi_r*MPa_per_m, cc%psi_x*MPa_per_m, cc%psi_l*MPa_per_m
+
+  end associate
+end subroutine init_cohort_hydraulics
 
 end module vegn_cohort_mod

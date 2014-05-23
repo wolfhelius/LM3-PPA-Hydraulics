@@ -339,7 +339,6 @@ character(len=256), parameter   :: note_header =                                
            call flux_down_from_atmos(Time_atmos, Atm, Land, Land_ice_atmos_boundary, Atmos_land_boundary )
 
 !      ---- land model ----
-
            if (do_land)  call update_land_model_fast( Atmos_land_boundary, Land )
 
 !      ---- atmosphere up ----
@@ -358,7 +357,6 @@ character(len=256), parameter   :: note_header =                                
 
         Time = Time_atmos
      end if                     !Atm%pe block
-
 !--- write out intermediate restart file when needed.
      if( Time >= Time_restart ) then
         Time_restart_current = Time
@@ -502,7 +500,6 @@ contains
     Atm%pelist(1) = 0
     Atm%pe  = .true.
     Land%pe = Atm%pe
- 
 !Write out messages on root PEs
     write( text,'(a,2i6)' )'Atmos PE range: ', Atm%pelist(1), Atm%pelist(atmos_npes)
     call error_mesg('coupler_init', trim(text), NOTE )
@@ -650,15 +647,18 @@ contains
 
     if( Atm%pe )then
 !---- atmosphere ----
+
         call atmos_model_init( Atm, Time_init, Time, Time_step_atmos )
 
 !---- land ----------
+
         call land_model_init( Atmos_land_boundary, Land, Time_init, Time, &
              Time_step_atmos, Time_step_cpld )
     end if
 
 !-----------------------------------------------------------------------
 !---- initialize flux exchange module ----
+
     call flux_exchange_init ( Time, Atm, Land, land_ice_atmos_boundary, dt_atmos=dt_atmos, dt_cpld=dt_cpld)
 
     Time_atmos = Time
